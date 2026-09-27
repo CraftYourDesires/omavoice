@@ -1,0 +1,8 @@
+#!/bin/bash
+# Omarchy runs this after every system update. Checks omavoice in the
+# background (a transcription and a cleanup take a few seconds) and sends a
+# notification only if something broke or a held Voxtype update is waiting.
+# install.sh links it to ~/.config/omarchy/hooks/post-update.d/50-omavoice.
+mkdir -p "$HOME/.local/state/omavoice"
+setsid -f "$HOME/.local/bin/omavoice-doctor" --notify \
+  >"$HOME/.local/state/omavoice/last-check.log" 2>&1 </dev/null

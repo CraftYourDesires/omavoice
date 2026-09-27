@@ -1,0 +1,5 @@
+#!/bin/bash
+# Omarchy runs this after `omarchy refresh pacman` rewrites /etc/pacman.conf
+# (with a warm sudo cache), so the omavoice hold on voxtype-bin survives it.
+# install.sh links it to ~/.config/omarchy/hooks/pre-refresh-pacman.d/50-omavoice.
+"$HOME/.local/bin/omavoice-hold"

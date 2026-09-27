@@ -382,6 +382,23 @@ def split_after_prefix(text, prefix):
     return "" if seen == len(want) else None
 
 
+def count_live(outcome):
+    """Tally live merges ("used") and fallbacks ("mismatch") for omavoice-doctor.
+    Counts only, in RAM; a run of mismatches means Voxtype changed how it
+    stitches chunks."""
+    path = os.path.join(RUNTIME, "live-stats.json")
+    try:
+        stats = json.load(open(path))
+    except (OSError, ValueError):
+        stats = {}
+    stats[outcome] = stats.get(outcome, 0) + 1
+    try:
+        with open(path, "w") as f:
+            json.dump(stats, f)
+    except OSError:
+        pass
+
+
 def live_merge(raw, style, context):
     """Finish a dictation that dictation-live already cleaned chunk by chunk.
 
@@ -415,11 +432,13 @@ def live_merge(raw, style, context):
         rest = split_after_prefix(raw, done_raw)
         if rest is None:
             log("LIVE mismatch, cleaning the whole transcript")
+            count_live("mismatch")
             return None
         rest = rest.lstrip(" .,;:!?")
         if rest:
             so_far = join_pieces(pieces)
             pieces.append((rest, guarded_clean(rest, style, context, previous=so_far[-400:], continuation=True)))
+        count_live("used")
         log(f"LIVE used {len(state['segments'])} pre-cleaned pieces, cleaned {len(rest.split())} words at the end")
         return join_pieces(pieces)
     except (OSError, ValueError, KeyError) as e:

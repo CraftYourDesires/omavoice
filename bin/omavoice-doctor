@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""Check that omavoice still works, for example after a system update.
+
+Checks the parts an update can break:
+  - Voxtype's binary still logs the chunk lines dictation-live follows
+  - it still transcribes a known clip correctly with your config, on the GPU
+    when your setup uses one (a cuDNN or CUDA update can silently drop it to CPU)
+  - the Voxtype service is running the expected build
+  - the Ollama cleanup still removes filler words
+  - live cleanup still lines up with Voxtype's transcripts
+  - voxtype-bin is still held back from routine updates (omavoice-hold)
+
+Usage:
+  omavoice-doctor                    check the installed setup
+  omavoice-doctor --binary-dir DIR   check an unpacked candidate Voxtype
+                                     (usr/lib/voxtype of a newer package)
+  omavoice-doctor --notify           also send a desktop notification when
+                                     something fails or a Voxtype update waits
+Exit code 0 when every check passes.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+REPO = os.path.dirname(HERE)
+CONFIG = os.path.expanduser(os.environ.get("OMAVOICE_CONFIG_DIR", "~/.config/voxtype"))
+RUNTIME = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+STATE_DIR = os.path.expanduser("~/.local/state/omavoice")
+FIXTURE = os.path.join(REPO, "tests", "fixtures", "check.wav")
+EXPECTED = os.path.join(REPO, "tests", "fixtures", "check.txt")
+# Pieces of the log lines dictation-live parses ("Chunk N completed: ...").
+LOG_MARKERS = [b" completed: ", b" completed (waited): ", b"Tail transcription: "]
+
+results = []
+
+
+def report(ok, name, detail=""):
+    results.append((ok, name, detail))
+    mark = {True: "ok  ", False: "FAIL", None: "skip"}[ok]
+    print(f"{mark} {name}" + (f": {detail}" if detail else ""))
+
+
+def run(cmd, timeout=120, **kw):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    except (OSError, subprocess.SubprocessError) as e:
+        return subprocess.CompletedProcess(cmd, 1, "", str(e))
+
+
+def pkg_version(query):
+    out = run(["pacman", query, "voxtype-bin"]).stdout
+    if query == "-Q":
+        return out.split()[1] if out.split() else ""
+    m = re.search(r"^Version\s*:\s*(\S+)", out, re.M)
+    return m.group(1) if m else ""
+
+
+def expected_binary():
+    """The build voxtype.service runs: CUDA unless omavoice.env picks a CPU one."""
+    try:
+        m = re.search(r"VOXTYPE_BIN=(\S+)", open(os.path.join(CONFIG, "omavoice.env")).read())
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    return "/usr/lib/voxtype/voxtype-onnx-cuda"
+
+
+def words(text):
+    return re.findall(r"[a-z0-9']+", text.lower())
+
+
+def check_binary(binary):
+    try:
+        data = open(os.path.realpath(binary), "rb").read()
+    except OSError as e:
+        return report(False, "Voxtype binary", str(e))
+    missing = [m.decode().strip() for m in LOG_MARKERS if m not in data]
+    if missing:
+        report(False, "chunk log format", f"markers missing ({', '.join(missing)}); live cleanup would stop working")
+    else:
+        report(True, "chunk log format", "dictation-live can follow this Voxtype")
+
+
+def check_transcription(binary):
+    uses_gpu = "cuda" in os.path.basename(binary)
+    start = time.monotonic()
+    proc = run([binary, "-c", os.path.join(CONFIG, "config.toml"), "-q", "transcribe", FIXTURE])
+    took = time.monotonic() - start
+    output = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""
+    want = words(open(EXPECTED).read())
+    got = set(words(output))
+    overlap = sum(w in got for w in want) / max(1, len(want))
+    if proc.returncode != 0 or overlap < 0.85:
+        return report(False, "transcription", f"{overlap:.0%} of the expected words (exit {proc.returncode}): {output[:120]!r}")
+    report(True, "transcription", f"{overlap:.0%} of the expected words in {took:.1f}s")
+    if uses_gpu:
+        gpu_error = "CUDAExecutionProvider" in proc.stdout + proc.stderr and "rror" in proc.stdout + proc.stderr
+        report(not gpu_error, "GPU acceleration",
+               "CUDA failed to load, transcription fell back to the CPU (check cudnn/cuda updates)" if gpu_error else "CUDA loads")
+
+
+def check_service(binary):
+    if run(["systemctl", "--user", "is-active", "voxtype.service"]).stdout.strip() != "active":
+        return report(False, "voxtype service", "not running (systemctl --user status voxtype)")
+    pid = run(["systemctl", "--user", "show", "voxtype.service", "-p", "MainPID", "--value"]).stdout.strip()
+    try:
+        running = os.path.realpath(f"/proc/{pid}/exe")
+    except OSError:
+        running = "?"
+    variant = open(os.path.join(RUNTIME, "voxtype-variant.env")).read() if os.path.exists(os.path.join(RUNTIME, "voxtype-variant.env")) else ""
+    if variant:
+        return report(True, "voxtype service", f"running on the CPU while the GPU is busy ({os.path.basename(running)})")
+    ok = os.path.realpath(binary) == running
+    report(ok, "voxtype service", f"running {os.path.basename(running)}" + ("" if ok else f", expected {os.path.basename(binary)}"))
+
+
+def check_cleanup():
+    try:
+        import tomllib
+        settings = tomllib.load(open(os.path.join(CONFIG, "omavoice.toml"), "rb"))
+    except (OSError, ValueError):
+        settings = {}
+    if settings.get("cleanup") is False:
+        return report(None, "LLM cleanup", "off in omavoice.toml")
+    if os.path.exists(os.path.join(RUNTIME, "voxtype", "gpu-busy")):
+        return report(None, "LLM cleanup", "paused while other apps use the GPU")
+    raw = "um so this is a quick check of the uh cleanup step you know"
+    env = dict(os.environ, DICTATION_NO_CONTEXT="1", DICTATION_WINDOW="|")
+    out = run([os.path.join(HERE, "dictation-cleanup")], input=raw, env=env, timeout=90).stdout.strip()
+    ok = out and out != raw and not re.search(r"\b(um|uh)\b", out, re.I)
+    report(bool(ok), "LLM cleanup", repr(out[:80]) if ok else f"returned {out[:80]!r}; is Ollama running with the model pulled?")
+
+
+def check_live_stats():
+    try:
+        stats = json.load(open(os.path.join(RUNTIME, "voxtype", "live-stats.json")))
+    except (OSError, ValueError):
+        return report(None, "live cleanup", "no long dictation since boot")
+    used, mismatch = stats.get("used", 0), stats.get("mismatch", 0)
+    if mismatch >= 2 and used == 0:
+        report(False, "live cleanup", f"{mismatch} long dictations fell back to a full cleanup; Voxtype may stitch chunks differently now")
+    else:
+        report(True, "live cleanup", f"{used} used, {mismatch} fell back since boot")
+
+
+def check_hold():
+    try:
+        conf = open("/etc/pacman.conf").read()
+    except OSError:
+        return report(None, "update hold", "no /etc/pacman.conf")
+    held = re.search(r"^\s*IgnorePkg\s*=.*\bvoxtype-bin\b", conf, re.M)
+    report(bool(held), "update hold",
+           "voxtype-bin only updates through omavoice-upgrade" if held
+           else "voxtype-bin is not held, so a system update can replace it untested; run omavoice-hold")
+
+
+def notify(title, body, urgency="normal"):
+    run(["notify-send", "-u", urgency, "-a", "omavoice", title, body], timeout=5)
+
+
+def main():
+    args = sys.argv[1:]
+    binary_dir = args[args.index("--binary-dir") + 1] if "--binary-dir" in args else None
+    binary = expected_binary()
+    if binary_dir:
+        # The package has the real files (cuda-13/voxtype-onnx-cuda-13); the
+        # short names like voxtype-onnx-cuda are symlinks voxtype's own setup
+        # creates on the installed system, so map through them.
+        rel = os.path.relpath(os.path.realpath(binary), "/usr/lib/voxtype")
+        candidate = os.path.join(binary_dir, rel)
+        binary = candidate if os.path.exists(candidate) else os.path.join(binary_dir, os.path.basename(binary))
+        print(f"Checking candidate Voxtype in {binary_dir}")
+    else:
+        print(f"Checking installed omavoice (voxtype-bin {pkg_version('-Q')})")
+
+    check_binary(binary)
+    check_transcription(binary)
+    if not binary_dir:
+        check_service(binary)
+        check_cleanup()
+        check_live_stats()
+        check_hold()
+
+    failed = [name for ok, name, _ in results if ok is False]
+    installed, available = pkg_version("-Q"), pkg_version("-Si")
+    waiting = not binary_dir and available and available != installed
+    if waiting:
+        print(f"\nVoxtype {available} is available (installed {installed}, held back). Run omavoice-upgrade to test and install it.")
+    if not binary_dir and not failed:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(os.path.join(STATE_DIR, "verified"), "w") as f:
+            f.write(f"voxtype-bin {installed} verified {time.strftime('%Y-%m-%d %H:%M')}\n")
+    if "--notify" in args:
+        if failed:
+            notify("Dictation needs attention", f"Failed: {', '.join(failed)}. Run omavoice-doctor for details.", "critical")
+        elif waiting:
+            notify("Voxtype update waiting", f"Voxtype {available} is held back. Run omavoice-upgrade to test and install it.")
+    print("\nAll checks passed." if not failed else f"\nFailed: {', '.join(failed)}")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

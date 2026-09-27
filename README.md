@@ -65,7 +65,8 @@ The installer:
 3. Downloads Cohere Transcribe (3.9GB) and, with cleanup on, `gemma4:e4b` (9GB).
 4. Symlinks the scripts into `~/.local/bin` and the service files into `~/.config/systemd/user`, so `git pull` updates them.
 5. Creates your config files only if they are missing. A stock Voxtype config is moved to `config.toml.before-omavoice`.
-6. Prints the Hyprland key bindings to paste into `~/.config/hypr/bindings.lua` (also in `hyprland/bindings.lua`).
+6. Holds `voxtype-bin` back from routine updates and links the Omarchy hooks that check the setup after each update (see below).
+7. Prints the Hyprland key bindings to paste into `~/.config/hypr/bindings.lua` (also in `hyprland/bindings.lua`).
 
 ## Use
 
@@ -105,6 +106,23 @@ key release:     Voxtype transcribes the tail ─▶ dictation-cleanup cleans on
 - `bin/dictation-cleanup` is Voxtype's post-processing command. It merges the live pieces, cleans the rest, and falls back to a full cleanup if anything doesn't line up, so text is never lost.
 - `bin/dictation-vram-guard` watches the GPU. When other apps use too much VRAM it unloads the cleanup model and restarts Voxtype on its CPU build, and moves both back once the GPU is quiet for a minute.
 - `systemd/voxtype.service.d/override.conf` runs the right Voxtype build and sends its chunk log to RAM.
+- `bin/omavoice-doctor`, `bin/omavoice-upgrade`, `bin/omavoice-hold` and `hooks/` keep it working across system updates (below).
+
+## Updates without surprises
+
+omavoice depends on details of Voxtype 1.0.1 (its chunk log lines and how it stitches chunks), and on CUDA libraries that system updates also touch. So instead of letting a routine update swap Voxtype underneath you:
+
+- **Voxtype is held back.** The installer adds `voxtype-bin` to pacman's `IgnorePkg`, so `omarchy-update` skips it. An Omarchy `pre-refresh-pacman` hook puts the hold back if `omarchy refresh pacman` rewrites `/etc/pacman.conf`.
+- **Every system update is checked.** An Omarchy `post-update` hook runs `omavoice-doctor` in the background after each update. You only get a notification if something broke (for example a cuDNN update that knocks transcription off the GPU) or a new Voxtype is waiting.
+- **New Voxtype versions are tested before they are installed.** `omavoice-upgrade` saves the working package, unpacks the new one, runs the checks against its binary, and only installs it if they pass. If the installed version then fails the full check, it rolls back to the saved package on its own. `omavoice-upgrade --rollback` does that by hand.
+
+| Command | What it does |
+|---|---|
+| `omavoice-doctor` | Checks the chunk log format, transcription of a known clip, GPU acceleration, the running service, the LLM cleanup, live cleanup and the update hold |
+| `omavoice-upgrade` | Tests, installs and verifies a new Voxtype, with automatic rollback |
+| `omavoice-hold [--release]` | Adds or removes the `IgnorePkg` hold |
+
+Even when something does break, dictation keeps working: a CUDA failure falls back to the CPU, a cleanup failure pastes the raw transcript, and a live cleanup mismatch falls back to a full cleanup.
 
 ## Privacy
 

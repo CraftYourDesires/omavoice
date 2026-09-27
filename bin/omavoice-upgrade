@@ -1,0 +1,87 @@
+#!/bin/bash
+# Upgrade Voxtype safely. omavoice holds voxtype-bin back from routine system
+# updates (omavoice-hold); this is the only way a new version gets in:
+#   1. keep a copy of the working package for rollback
+#   2. download the new package and test its binary with omavoice-doctor
+#      before installing it (nothing changes if that fails)
+#   3. install it, restart Voxtype, run the full check
+#   4. reinstall the saved package automatically if anything fails
+# Usage: omavoice-upgrade            upgrade to the version in the repos
+#        omavoice-upgrade --rollback reinstall the saved previous version
+set -euo pipefail
+
+save="$HOME/.local/share/omavoice/rollback"
+cache=/var/cache/pacman/pkg
+mkdir -p "$save"
+note() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+notify() { notify-send -a omavoice "$@" 2>/dev/null || true; }
+
+restore() {
+  local pkg
+  pkg=$(ls -t "$save"/voxtype-bin-*.pkg.tar.zst 2>/dev/null | head -1)
+  [[ -n $pkg ]] || { echo "No saved package in $save to roll back to."; exit 1; }
+  note "Reinstalling $(basename "$pkg")"
+  sudo pacman -U --noconfirm "$pkg"
+  systemctl --user restart voxtype.service
+}
+
+if [[ ${1:-} == --rollback ]]; then
+  restore
+  omavoice-doctor
+  exit
+fi
+
+installed=$(pacman -Q voxtype-bin | awk '{print $2}')
+available=$(pacman -Si voxtype-bin | awk '/^Version/ {print $3}')
+if [[ $installed == "$available" ]]; then
+  echo "Voxtype $installed is the newest version in your package database."
+  echo "(Run omarchy-update first to refresh it.)"
+  exit 0
+fi
+echo "Installed: $installed   Available: $available"
+
+note "Saving the working package ($installed) for rollback"
+current=$(ls "$cache"/voxtype-bin-"$installed"-*.pkg.tar.zst 2>/dev/null | head -1 || true)
+if [[ -n $current ]]; then
+  cp -n "$current" "$save/"
+elif ! ls "$save"/voxtype-bin-"$installed"-*.pkg.tar.zst >/dev/null 2>&1; then
+  echo "voxtype-bin $installed is not in $cache, so there would be nothing to roll back to."
+  read -rp "Continue anyway? [y/N] " answer
+  [[ $answer == [yY]* ]] || exit 1
+fi
+
+note "Downloading voxtype-bin $available"
+sudo pacman -Sw --noconfirm voxtype-bin
+candidate=$(ls "$cache"/voxtype-bin-"$available"-*.pkg.tar.zst | head -1)
+
+note "Testing the new binary before installing it"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+bsdtar -xf "$candidate" -C "$tmp" usr/lib/voxtype
+if ! omavoice-doctor --binary-dir "$tmp/usr/lib/voxtype"; then
+  echo
+  echo "Voxtype $available failed the checks above, so it was NOT installed."
+  echo "Your working $installed stays in place. Check the omavoice repo for an update."
+  notify -u critical "Voxtype $available not installed" "It failed omavoice's checks; $installed is still in use."
+  exit 1
+fi
+
+note "Installing voxtype-bin $available"
+sudo pacman -S --noconfirm voxtype-bin
+systemctl --user restart voxtype.service
+sleep 5
+
+note "Checking the installed setup"
+if ! omavoice-doctor; then
+  echo
+  echo "The installed $available failed, rolling back to $installed."
+  restore
+  notify -u critical "Voxtype upgrade rolled back" "$available failed omavoice's checks; back on $installed."
+  exit 1
+fi
+
+# Keep only the newest saved package (the version before this one).
+ls -t "$save"/voxtype-bin-*.pkg.tar.zst | tail -n +2 | xargs -r rm -f
+notify "Voxtype upgraded" "Now on $available; all omavoice checks passed."
+echo
+echo "Voxtype $available is installed and verified. Rollback copy: $(ls "$save")"

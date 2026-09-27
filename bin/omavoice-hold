@@ -1,0 +1,25 @@
+#!/bin/bash
+# Keep voxtype-bin out of routine system updates (pacman IgnorePkg), so a new
+# Voxtype only arrives through omavoice-upgrade, which tests it first.
+# Idempotent. Called by install.sh and by Omarchy's pre-refresh-pacman hook,
+# which runs after `omarchy refresh pacman` rewrites /etc/pacman.conf.
+# Usage: omavoice-hold [--release]
+set -euo pipefail
+conf=/etc/pacman.conf
+
+if [[ ${1:-} == --release ]]; then
+  sudo sed -i -E '/^[[:space:]]*IgnorePkg[[:space:]]*=/ s/[[:space:]]+voxtype-bin\b//' "$conf"
+  sudo sed -i -E '/^[[:space:]]*IgnorePkg[[:space:]]*=[[:space:]]*$/d' "$conf"
+  echo "voxtype-bin is no longer held; system updates will upgrade it."
+  exit 0
+fi
+
+if grep -Eq '^[[:space:]]*IgnorePkg[[:space:]]*=.*\bvoxtype-bin\b' "$conf"; then
+  echo "voxtype-bin is already held."
+elif grep -Eq '^[[:space:]]*IgnorePkg[[:space:]]*=' "$conf"; then
+  sudo sed -i -E '0,/^[[:space:]]*IgnorePkg[[:space:]]*=/ s/^([[:space:]]*IgnorePkg[[:space:]]*=.*)$/\1 voxtype-bin/' "$conf"
+  echo "Added voxtype-bin to IgnorePkg in $conf."
+else
+  sudo sed -i '/^\[options\]/a IgnorePkg = voxtype-bin' "$conf"
+  echo "Added IgnorePkg = voxtype-bin to $conf."
+fi

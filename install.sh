@@ -117,6 +117,20 @@ else
   echo "VOXTYPE_BIN=$cpu_bin" >"$cfg/omavoice.env"
 fi
 
+step "Protecting against surprise Voxtype updates"
+# Hold voxtype-bin back from routine updates; omavoice-upgrade tests a new
+# version before installing it. The Omarchy hooks keep the hold in place and
+# check everything after each system update.
+"$repo/bin/omavoice-hold"
+hooks="$HOME/.config/omarchy/hooks"
+mkdir -p "$hooks/pre-refresh-pacman.d" "$hooks/post-update.d"
+ln -sfn "$repo/hooks/pre-refresh-pacman" "$hooks/pre-refresh-pacman.d/50-omavoice"
+ln -sfn "$repo/hooks/post-update" "$hooks/post-update.d/50-omavoice"
+installed=$(pacman -Q voxtype-bin | awk '{print $2}')
+mkdir -p "$HOME/.local/share/omavoice/rollback"
+cp -n /var/cache/pacman/pkg/voxtype-bin-"$installed"-*.pkg.tar.zst "$HOME/.local/share/omavoice/rollback/" 2>/dev/null ||
+  echo "No cached voxtype-bin $installed package; omavoice-upgrade will save one before the next upgrade."
+
 step "Starting services"
 systemctl --user daemon-reload
 if [[ $cleanup == true ]]; then
@@ -138,3 +152,4 @@ else
 fi
 echo
 echo "Then tap Super + Alt (or hold F9) and talk. Add names and jargon to $cfg/dictionary.txt."
+echo "Check the setup any time with omavoice-doctor; upgrade Voxtype with omavoice-upgrade."
