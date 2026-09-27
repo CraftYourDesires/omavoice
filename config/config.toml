@@ -1,0 +1,79 @@
+# Voxtype configuration from omavoice (https://github.com/CraftYourDesires/omavoice):
+# Cohere Transcribe (local ASR) -> text replacements -> local LLM cleanup with
+# your personal dictionary (~/.local/bin/dictation-cleanup).
+# Hotkeys live in Hyprland (see hyprland/bindings.lua in the repo).
+# install.sh copies this file only when you have no config yet.
+
+engine = "cohere"
+state_file = "auto"
+
+[hotkey]
+enabled = false
+
+[audio]
+device = "default"
+sample_rate = 16000
+# 10 minutes. Long dictations stay accurate thanks to eager processing below.
+max_duration_secs = 600
+pause_media = true
+
+[audio.feedback]
+enabled = true
+theme = "subtle"
+volume = 0.5
+
+[cohere]
+model = "cohere-transcribe-fp16"
+language = "en"
+threads = 8
+# Keep this false: with on-demand loading Voxtype 1.0.1 sends no eager chunks
+# for Cohere, so long dictations are transcribed in one garbled pass.
+on_demand_loading = false
+
+# Kept so switching engines with `voxtype config set engine whisper` just works.
+[whisper]
+model = "large-v3-turbo"
+language = "en"
+# Despite living under [whisper], eager processing applies to every engine.
+# Cohere reads audio in one pass and garbles anything past its 35s window,
+# so transcribe 20s chunks while you are still talking. This keeps long
+# dictations accurate, and only the last chunk is left to do after stopping.
+eager_processing = true
+eager_chunk_secs = 20.0
+
+[output]
+# Paste the whole dictation at once (like Wispr Flow) instead of typing it
+# character by character. Shift+Insert pastes in terminals and normal apps alike.
+# The dictation stays on the clipboard afterwards (restore_clipboard = false),
+# so it is never lost when no text box has focus.
+mode = "paste"
+paste_keys = "shift+insert"
+restore_clipboard = false
+fallback_to_clipboard = true
+
+[output.post_process]
+command = "__HOME__/.local/bin/dictation-cleanup"
+timeout_ms = 60000
+
+[output.notification]
+on_recording_start = false
+on_recording_stop = false
+on_transcription = false
+
+[text]
+spoken_punctuation = false
+
+# Instant fixes applied before the LLM pass (case-insensitive, whole words).
+# Add your own frequent mishearings here; names and jargon also belong in
+# ~/.config/voxtype/dictionary.txt, which the LLM pass uses.
+[text.replacements]
+"oh marky" = "Omarchy"
+"oh marchy" = "Omarchy"
+"omar key" = "Omarchy"
+"vox type" = "Voxtype"
+"whisper flow" = "Wispr Flow"
+"hyper land" = "Hyprland"
+"n eight n" = "n8n"
+"n 8 n" = "n8n"
+"air table" = "Airtable"
+"clod code" = "Claude Code"

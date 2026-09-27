@@ -1,0 +1,24 @@
+#!/bin/bash
+# Start/stop Voxtype dictation, and warm the cleanup LLM while you talk.
+# The model unloads after 10 idle minutes to free VRAM; loading it here in
+# parallel with recording hides the ~2.5s reload behind the time you speak.
+# Usage: dictation-record toggle|start|stop
+
+action=${1:-toggle}
+model=${DICTATION_MODEL:-gemma4:e4b}
+
+# Skip warming while dictation-vram-guard has the GPU marked busy, or when
+# cleanup is switched off in omavoice.toml (no GPU for the LLM).
+busy="${XDG_RUNTIME_DIR:-/tmp}/voxtype/gpu-busy"
+settings="$HOME/.config/voxtype/omavoice.toml"
+cleanup_off() { grep -Eq '^[[:space:]]*cleanup[[:space:]]*=[[:space:]]*false' "$settings" 2>/dev/null; }
+if [[ ! -e $busy ]] && ! cleanup_off && [[ $action == start || ( $action == toggle && $(voxtype status 2>/dev/null) == idle ) ]]; then
+  # An empty generate request only loads the model (and resets its idle clock).
+  setsid -f curl -s -m 30 http://127.0.0.1:11434/api/generate \
+    -d "{\"model\":\"$model\",\"keep_alive\":\"10m\"}" >/dev/null 2>&1
+  # Clean finished sentences while you talk, so long dictations don't wait
+  # for the whole rewrite at the end (see dictation-live).
+  setsid -f "$HOME/.local/bin/dictation-live" >/dev/null 2>&1 </dev/null
+fi
+
+exec voxtype record "$action"

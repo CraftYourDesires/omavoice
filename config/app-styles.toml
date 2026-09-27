@@ -1,0 +1,29 @@
+# Per-app cleanup styles for ~/.local/bin/dictation-cleanup (like Super Whisper modes).
+# For the focused window, `classes` are matched against its window class and
+# `titles` against its title (case-insensitive substrings). Styles are checked
+# in order and the first hit wins; no hit means the plain default cleanup.
+# Omarchy web apps have classes like "chrome-web.whatsapp.com__-Default", and
+# a normal browser tab is only recognizable by its title.
+# `hint` is added to the LLM prompt as extra guidance.
+
+[[style]]
+name = "chat"
+classes = ["discord", "telegram", "whatsapp", "signal", "slack", "messages.google.com", "messenger"]
+titles = ["WhatsApp", "Telegram", "Discord", "Slack", "Google Messages", "Messenger"]
+hint = "This is a casual chat message. Keep it conversational, with contractions and short sentences. Do not add a greeting or sign-off. A single short sentence may skip the final period."
+
+[[style]]
+name = "email"
+classes = ["hey.com", "thunderbird", "mail.google.com", "outlook"]
+titles = ["Gmail", "Outlook"]
+hint = "This is an email, so lay it out like one. Only if the transcript itself contains a greeting, put it on its own line ending with a comma, then a blank line; only if it contains a sign-off, put it after a blank line with the closing word and a comma on one line and the name on the next. Never add a greeting, sign-off, or name that was not spoken. Split the body into short paragraphs separated by blank lines."
+
+[[style]]
+name = "code"
+classes = ["org.omarchy.agent", "alacritty", "ghostty", "kitty", "foot", "code", "cursor", "zed", "nvim"]
+hint = "This is an instruction to an AI coding agent or a terminal. Keep technical terms, product names, file names, paths, commands, flags, and identifiers exact, and write spoken file names in their real form when clearly meant (\"dot env\" is .env, \"package dot json\" is package.json). Keep it as plain prose; never wrap it in code blocks or backticks."
+
+[[style]]
+name = "notes"
+classes = ["obsidian"]
+hint = "This is a personal note in Obsidian (Markdown). Keep every line the speaker says, including any title or lead-in before a list."

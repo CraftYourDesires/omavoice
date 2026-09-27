@@ -1,0 +1,9 @@
+# Fictional dictionary used only by the tests.
+Sam | teammate
+Priya Venkataraman | client contact
+Weslee | teammate, spelled with two Es
+Northwind | client company, sometimes misheard as "north wind"
+HubSpot
+Supabase
+Hyprland
+Omarchy

@@ -1,0 +1,25 @@
+# Personal dictation dictionary (omavoice cleanup pass).
+# One term per line. Optional "term | hint" gives the cleanup model context,
+# for example how the recognizer tends to mishear it.
+# install.sh copies this to ~/.config/voxtype/dictionary.txt if you have none.
+# bin/dictation-dictionary-refresh suggests candidates from your own writing.
+
+## People
+Sam | teammate, sometimes misheard as "Psalm"
+Priya Venkataraman
+DHH | David Heinemeier Hansson
+
+## Products and tools
+Omarchy
+Hyprland
+Voxtype
+Ollama
+Claude Code
+HubSpot
+n8n
+Supabase
+
+## Jargon
+Wayland
+PipeWire
+systemd

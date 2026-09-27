@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Suggest new dictation dictionary terms from your own writing.
+
+Scans Claude Code and Codex prompts, the Obsidian vaults, and GitHub repo
+names for frequent proper nouns and jargon that are not in the dictionary
+yet, and writes them to ~/.config/voxtype/dictionary-candidates.txt.
+Nothing is added automatically: copy the keepers into dictionary.txt.
+"""
+import collections
+import glob
+import json
+import os
+import re
+import subprocess
+
+H = os.path.expanduser("~")
+DICT = f"{H}/.config/voxtype/dictionary.txt"
+OUT = f"{H}/.config/voxtype/dictionary-candidates.txt"
+MIN_COUNT = 5
+
+
+def session_prompts():
+    for f in glob.glob(f"{H}/.claude/projects/*/*.jsonl"):
+        for line in open(f, errors="ignore"):
+            try:
+                o = json.loads(line)
+            except ValueError:
+                continue
+            content = o.get("message", {}).get("content")
+            if o.get("type") == "user" and isinstance(content, str):
+                yield content
+    for f in glob.glob(f"{H}/.codex/sessions/**/*.jsonl", recursive=True):
+        for line in open(f, errors="ignore"):
+            try:
+                p = json.loads(line).get("payload", {})
+            except ValueError:
+                continue
+            if p.get("type") == "message" and p.get("role") == "user":
+                for c in p.get("content", []):
+                    t = c.get("text", "")
+                    if t and not t.startswith(("<", "#")):
+                        yield t
+
+
+def vault_notes():
+    # Markdown notes to scan; set OMAVOICE_NOTES to your vault folder.
+    notes = os.path.expanduser(os.environ.get("OMAVOICE_NOTES", "~/Documents"))
+    for f in glob.glob(f"{notes}/**/*.md", recursive=True):
+        if "/.obsidian/" in f or "/.trash/" in f:
+            continue
+        try:
+            yield open(f, errors="ignore").read()[:20000]
+        except OSError:
+            pass
+
+
+def repo_names():
+    try:
+        out = subprocess.run(["gh", "repo", "list", "--limit", "300", "--json", "name", "-q", ".[].name"],
+                             capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return out.split()
+
+
+def main():
+    common = set()
+    if os.path.exists("/usr/share/dict/cracklib-small"):
+        common = {w.strip().lower() for w in open("/usr/share/dict/cracklib-small")}
+    known = set()
+    if os.path.exists(DICT):
+        for line in open(DICT):
+            if line.strip() and not line.startswith("#"):
+                known.add(line.split("|")[0].strip().lower())
+
+    token = re.compile(r"\b[A-Za-z][A-Za-z0-9]*(?:[-.][A-Za-z0-9]+)*\b")
+    counts = collections.Counter()
+    for text in list(session_prompts()) + list(vault_notes()):
+        text = re.sub(r"https?://\S+|`[^`]*`|/[\w./-]+", " ", text)
+        for w in token.findall(text):
+            if len(w) < 3 or re.search(r"\d{3,}|_|\.", w):
+                continue
+            # Proper nouns and camelCase; skip plain dictionary words.
+            if (w[0].isupper() or re.search(r"[a-z][A-Z]", w)) and w.lower() not in common:
+                counts[w] += 1
+    for name in repo_names():
+        counts[name] += MIN_COUNT
+
+    fresh = [(w, n) for w, n in counts.most_common() if n >= MIN_COUNT and w.lower() not in known]
+    with open(OUT, "w") as f:
+        f.write("# Candidate dictionary terms (count). Copy keepers into dictionary.txt.\n")
+        for w, n in fresh[:400]:
+            f.write(f"{w}\t{n}\n")
+    print(f"{len(fresh)} candidates, top 400 written to {OUT}")
+
+
+if __name__ == "__main__":
+    main()

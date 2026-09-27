@@ -1,0 +1,11 @@
+[Unit]
+Description=Free dictation VRAM (cleanup model and Voxtype) when other apps need the GPU
+After=ollama.service
+
+[Service]
+ExecStart=%h/.local/bin/dictation-vram-guard
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

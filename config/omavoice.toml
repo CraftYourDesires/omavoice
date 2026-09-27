@@ -1,0 +1,12 @@
+# omavoice settings (read by ~/.local/bin/dictation-cleanup).
+# install.sh fills these in the first time.
+
+# Your first name. The cleanup prompt refers to you by it ("Return Sam's
+# dictated text ..."), and names on your screen are matched against it.
+name = "__NAME__"
+
+# LLM cleanup (filler removal, punctuation, app styles, dictionary spelling).
+# Needs an NVIDIA GPU with about 5GB free VRAM to be fast; on CPU it takes
+# 10s or more per dictation, so install.sh turns it off on machines without
+# one and you get Cohere's already punctuated text as is.
+cleanup = __CLEANUP__
