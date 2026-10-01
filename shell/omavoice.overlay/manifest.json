@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omavoice.overlay",
+  "name": "omavoice recording overlay",
+  "version": "1.0.0",
+  "author": "omavoice",
+  "license": "MIT",
+  "homepage": "https://github.com/CraftYourDesires/omavoice",
+  "description": "Small animated overlay while Voxtype dictation records, driven by the microphone level",
+  "kinds": ["service"],
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

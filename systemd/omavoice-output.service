@@ -1,0 +1,16 @@
+# Pastes each finished dictation (Voxtype runs in file mode, see
+# config/config.toml) and saves it to the private history. Idle cost: one
+# inotify watch on Voxtype's runtime folder.
+[Unit]
+Description=omavoice: paste finished dictations and keep private history
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/omavoice-output
+Restart=always
+RestartSec=1
+# Only counts and flags are logged, never dictation text.
+
+[Install]
+WantedBy=graphical-session.target

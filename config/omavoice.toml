@@ -10,3 +10,18 @@ name = "__NAME__"
 # 10s or more per dictation, so install.sh turns it off on machines without
 # one and you get Cohere's already punctuated text as is.
 cleanup = __CLEANUP__
+
+# Recording overlay (the omavoice.overlay omarchy-shell plugin): a small
+# animated pill that follows your voice while you dictate. Set overlay = false
+# to hide it, or overlay_position = "bottom" to show it at the bottom edge.
+# overlay_style picks the look: "neon" (glowing waveform pill) or "trace" (a
+# cyberpunk line trace); the omavoice app switches it with live previews.
+# overlay = false
+# overlay_position = "top"
+# overlay_style = "neon"
+
+# Private dictation history in ~/.local/share/omavoice (only you can read it),
+# searchable in the omavoice app. history = false stops saving text (word
+# stats still count); history_days = 0 keeps entries forever.
+# history = true
+# history_days = 30

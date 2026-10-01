@@ -1,0 +1,15 @@
+#!/bin/bash
+# Open the omavoice app: overlay style with live previews, your private
+# dictation history, the dictionary and word stats. If it is already open,
+# focus its window instead of opening a second one.
+# The app is a Quickshell config in the repo's app/ folder.
+app=$(cd "$(dirname "$(readlink -f "$0")")/../app" && pwd)
+if pid=$(qs -p "$app" ipc call omavoice-app pid 2>/dev/null) && [[ $pid =~ ^[0-9]+$ ]] && ((pid > 0)); then
+  hyprctl dispatch focuswindow "pid:$pid" >/dev/null
+  exit 0
+fi
+# Float it centered at a comfortable size, the way omarchy-launch-about sizes
+# its window: a runtime rule, replaced on every launch, no config file edits.
+hyprctl eval 'if omavoice_window_rule then omavoice_window_rule:set_enabled(false) end
+omavoice_window_rule = hl.window_rule({ match = { class = "^omavoice$" }, float = true, center = true, size = { 1080, 720 } })' >/dev/null 2>&1
+setsid -f qs -n -p "$app" >/dev/null 2>&1 </dev/null

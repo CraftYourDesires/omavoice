@@ -53,7 +53,9 @@ if ((ram_gb < 16)) && [[ $voxtype_gpu == false ]]; then
 fi
 
 step "Installing packages"
-pkgs=(voxtype-bin wtype wl-clipboard libnotify python curl)
+# gcc, pkgconf, wayland and wayland-protocols build omavoice-clipboard;
+# inotify-tools lets omavoice-output wait for dictations without polling.
+pkgs=(voxtype-bin wtype wl-clipboard libnotify python curl inotify-tools gcc pkgconf wayland wayland-protocols)
 [[ $cleanup == true ]] && pkgs+=(ollama-cuda)
 [[ $voxtype_gpu == true ]] && pkgs+=(cudnn)
 sudo pacman -S --needed --noconfirm "${pkgs[@]}"
@@ -75,6 +77,7 @@ step "Linking scripts and services from $repo"
 mkdir -p "$HOME/.local/bin" "$units/voxtype.service.d" "$cfg"
 for f in "$repo"/bin/*; do ln -sfn "$f" "$HOME/.local/bin/$(basename "$f")"; done
 ln -sfn "$repo/systemd/voxtype.service.d/override.conf" "$units/voxtype.service.d/override.conf"
+ln -sfn "$repo/systemd/omavoice-output.service" "$units/omavoice-output.service"
 if [[ $cleanup == true ]]; then
   if systemctl is-enabled ollama.service >/dev/null 2>&1; then
     echo "System-wide ollama.service is enabled; using it instead of a user service."
@@ -86,6 +89,12 @@ if [[ $cleanup == true ]]; then
   fi
 fi
 
+step "Building the clipboard helper"
+# omavoice-clipboard pastes each dictation and puts your clipboard back with
+# all its formats afterwards (build/ is ignored by git).
+"$repo/clipboard/build.sh"
+ln -sfn "$repo/build/omavoice-clipboard" "$HOME/.local/bin/omavoice-clipboard"
+
 step "Creating config files (existing ones are kept)"
 if [[ -e $cfg/config.toml ]] && ! grep -q dictation-cleanup "$cfg/config.toml"; then
   # A stock config (Omarchy ships one) lacks eager processing and the cleanup hook.
@@ -93,7 +102,7 @@ if [[ -e $cfg/config.toml ]] && ! grep -q dictation-cleanup "$cfg/config.toml"; 
   echo "Moved your previous Voxtype config to $cfg/config.toml.before-omavoice"
 fi
 if [[ ! -e $cfg/config.toml ]]; then
-  sed "s|__HOME__|$HOME|" "$repo/config/config.toml" >"$cfg/config.toml"
+  sed -e "s|__HOME__|$HOME|" -e "s|__RUNTIME__|${XDG_RUNTIME_DIR:-/run/user/$(id -u)}|" "$repo/config/config.toml" >"$cfg/config.toml"
   if [[ $voxtype_gpu == false ]]; then
     threads=$(($(nproc) / 2)); ((threads > 8)) && threads=8; ((threads < 2)) && threads=2
     sed -i "s/^threads = 8$/threads = $threads/" "$cfg/config.toml"
@@ -101,6 +110,14 @@ if [[ ! -e $cfg/config.toml ]]; then
 else
   echo "Keeping your $cfg/config.toml. Compare it with $repo/config/config.toml; it needs"
   echo "eager_processing = true, on_demand_loading = false and the post_process command."
+  # Hand the finished text to omavoice-output instead of Voxtype's own paste,
+  # which leaves every dictation on the clipboard. Only mode, file_path and
+  # file_mode in [output] change; everything else in the file stays.
+  if ! grep -Eq '^[[:space:]]*mode[[:space:]]*=[[:space:]]*"file"' "$cfg/config.toml"; then
+    cp -n "$cfg/config.toml" "$cfg/config.toml.before-omavoice-output"
+    echo "Saved your current Voxtype config as $cfg/config.toml.before-omavoice-output"
+  fi
+  "$repo/bin/omavoice-store" setup-output "$cfg/config.toml"
 fi
 [[ -e $cfg/app-styles.toml ]] || cp "$repo/config/app-styles.toml" "$cfg/app-styles.toml"
 [[ -e $cfg/dictionary.txt ]] || cp "$repo/config/dictionary.example.txt" "$cfg/dictionary.txt"
@@ -139,8 +156,39 @@ if [[ $cleanup == true ]]; then
   ollama pull gemma4:e4b
   [[ -e $units/dictation-vram-guard.service ]] && systemctl --user enable --now dictation-vram-guard.service
 fi
+# omavoice-output first, so it is ready for the first file-mode dictation.
+systemctl --user enable omavoice-output.service >/dev/null 2>&1 || true
+systemctl --user restart omavoice-output.service
 systemctl --user enable voxtype.service >/dev/null 2>&1 || true
 systemctl --user restart voxtype.service
+
+step "Recording overlay"
+# A small animated pill that follows your voice while Voxtype records. It is
+# an omarchy-shell plugin, linked from this repo like the scripts above.
+plugins="$HOME/.config/omarchy/plugins"
+if command -v omarchy-shell >/dev/null; then
+  mkdir -p "$plugins"
+  ln -sfn "$repo/shell/omavoice.overlay" "$plugins/omavoice.overlay"
+  omarchy-shell -q shell rescanPlugins
+  sleep 1
+  if omarchy plugin enable omavoice.overlay >/dev/null 2>&1; then
+    # The shell keeps an already loaded plugin's old code until it restarts.
+    omarchy restart shell >/dev/null 2>&1 || true
+    echo "Enabled omavoice.overlay in omarchy-shell."
+  else
+    echo "Linked the overlay. Enable it once the shell is running: omarchy plugin enable omavoice.overlay"
+  fi
+else
+  echo "omarchy-shell not found; skipping the recording overlay."
+fi
+
+step "omavoice app"
+# Overlay style with previews, private history, dictionary and word stats.
+apps="$HOME/.local/share/applications"
+mkdir -p "$apps"
+sed "s|^Exec=omavoice$|Exec=$HOME/.local/bin/omavoice|" "$repo/applications/omavoice.desktop" >"$apps/omavoice.desktop"
+update-desktop-database -q "$apps" 2>/dev/null || true
+echo "Open omavoice from the app launcher, or run omavoice."
 
 step "Done"
 if grep -qs dictation-record "$HOME/.config/hypr/bindings.lua"; then

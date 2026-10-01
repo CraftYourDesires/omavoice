@@ -42,11 +42,14 @@ eager_processing = true
 eager_chunk_secs = 20.0
 
 [output]
-# Paste the whole dictation at once (like Wispr Flow) instead of typing it
-# character by character. Shift+Insert pastes in terminals and normal apps alike.
-# The dictation stays on the clipboard afterwards (restore_clipboard = false),
-# so it is never lost when no text box has focus.
-mode = "paste"
+# Voxtype writes the finished dictation to a file in RAM ($XDG_RUNTIME_DIR)
+# and omavoice-output pastes it with paste_keys (Shift+Insert pastes in
+# terminals and normal apps alike). Your clipboard is put back afterwards with
+# all its formats, and every dictation is kept in the omavoice app's private
+# history, so nothing is lost when no text box has focus.
+mode = "file"
+file_path = "__RUNTIME__/voxtype/omavoice-output.txt"
+file_mode = "overwrite"
 paste_keys = "shift+insert"
 restore_clipboard = false
 fallback_to_clipboard = true
@@ -77,3 +80,8 @@ spoken_punctuation = false
 "n 8 n" = "n8n"
 "air table" = "Airtable"
 "clod code" = "Claude Code"
+
+# The omavoice overlay (omarchy-shell plugin) replaces Voxtype's own
+# waveform OSD; with both on, two animations show while you talk.
+[osd]
+enabled = false

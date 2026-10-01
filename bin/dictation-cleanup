@@ -470,8 +470,8 @@ def main():
         last = open(LAST_OUTPUT, encoding="utf-8").read()
     except OSError:
         last = ""
-    # The clipboard usually still holds the last dictation (paste mode), which
-    # VOXTYPE_CONTEXT already covers.
+    # Dictations no longer stay on the clipboard (omavoice-output puts it
+    # back), but one copied from history can; VOXTYPE_CONTEXT covers it.
     context = screen_context(cls, [last, os.environ.get("VOXTYPE_CONTEXT", "")])
     out = live_merge(raw, style, context)
     if out is None:

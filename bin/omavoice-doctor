@@ -9,6 +9,8 @@ Checks the parts an update can break:
   - the Ollama cleanup still removes filler words
   - live cleanup still lines up with Voxtype's transcripts
   - voxtype-bin is still held back from routine updates (omavoice-hold)
+  - dictations reach the focused app without being left on the clipboard
+    (Voxtype in file mode, omavoice-output running, omavoice-clipboard working)
 
 Usage:
   omavoice-doctor                    check the installed setup
@@ -149,6 +151,29 @@ def check_live_stats():
         report(True, "live cleanup", f"{used} used, {mismatch} fell back since boot")
 
 
+def check_output():
+    import shutil
+    import tomllib
+    name = "paste without the clipboard"
+    try:
+        with open(os.path.join(CONFIG, "config.toml"), "rb") as f:
+            out = tomllib.load(f).get("output", {})
+    except (OSError, tomllib.TOMLDecodeError):
+        out = {}
+    want = os.path.join(RUNTIME, "voxtype", "omavoice-output.txt")
+    if out.get("mode") != "file" or out.get("file_path") != want:
+        return report(False, name, f"Voxtype [output] mode is {out.get('mode')!r}, so it pastes itself and leaves text on the clipboard; "
+                      "run omavoice-store setup-output ~/.config/voxtype/config.toml and restart voxtype")
+    if run(["systemctl", "--user", "is-active", "omavoice-output.service"], timeout=10).stdout.strip() != "active":
+        return report(False, name, "omavoice-output.service is not running, so finished dictations wait in RAM "
+                      "(systemctl --user enable --now omavoice-output)")
+    helper = shutil.which("omavoice-clipboard") or os.path.join(REPO, "build", "omavoice-clipboard")
+    # `types` lists MIME type names only; nothing from the clipboard is read.
+    if not os.access(helper, os.X_OK) or run([helper, "types"], timeout=10).returncode != 0:
+        return report(False, name, "omavoice-clipboard is missing or the compositor lacks ext-data-control; dictations are typed instead (run clipboard/build.sh)")
+    report(True, name, "Voxtype writes to RAM, omavoice-output pastes and puts your clipboard back")
+
+
 def check_hold():
     try:
         conf = open("/etc/pacman.conf").read()
@@ -185,6 +210,7 @@ def main():
         check_service(binary)
         check_cleanup()
         check_live_stats()
+        check_output()
         check_hold()
 
     failed = [name for ok, name, _ in results if ok is False]

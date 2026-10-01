@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""Deliver each finished dictation to the focused app, without keeping it on
+the clipboard, and save it once to the private history.
+
+Voxtype runs in file mode: when a dictation is done it writes the text to
+$XDG_RUNTIME_DIR/voxtype/omavoice-output.txt (RAM) and then, exactly once per
+recording, a .done sidecar with the outcome. This service (omavoice-output
+.service) waits on those with inotify, so it does nothing while idle. For
+each dictation it:
+
+  1. reads and deletes the text file, so the text does not linger in RAM
+  2. adds it to history and word stats (omavoice_store.add, deduplicated)
+  3. pastes it with omavoice-clipboard, which puts your clipboard back with
+     all its formats afterwards (falls back to typing it with wtype when the
+     compositor lacks the data-control protocol)
+
+It also follows Voxtype's state file to time each recording, which is what
+words per minute are computed from. Logs carry counts only, never text.
+
+Env overrides (tests): OMAVOICE_OUTPUT_FILE, OMAVOICE_STATE_FILE,
+OMAVOICE_CLIPBOARD_BIN, OMAVOICE_PASTE_CMD, OMAVOICE_NO_NOTIFY=1.
+"""
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+import omavoice_store as store  # noqa: E402
+
+OUT = os.environ.get("OMAVOICE_OUTPUT_FILE") or store.output_file()
+DONE = OUT + ".done"
+WATCH_DIR = os.path.dirname(OUT)
+STATE = os.environ.get("OMAVOICE_STATE_FILE") or os.path.join(WATCH_DIR, "state")
+REPO_BUILD = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "build", "omavoice-clipboard")
+# A dictation older than this when found (the service was down) is only saved
+# to history: pasting it now would land wherever the cursor happens to be.
+STALE_SECONDS = 20
+
+
+def log(msg):
+    print(msg, file=sys.stderr, flush=True)
+
+
+def clipboard_bin():
+    for c in (os.environ.get("OMAVOICE_CLIPBOARD_BIN"), shutil.which("omavoice-clipboard"), REPO_BUILD):
+        if c and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def notify(title, body):
+    if os.environ.get("OMAVOICE_NO_NOTIFY"):
+        return
+    subprocess.run(["notify-send", "-a", "omavoice", "-i", "audio-input-microphone", title, body],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+
+
+def focused_class():
+    try:
+        w = json.loads(subprocess.run(["hyprctl", "activewindow", "-j"], capture_output=True, text=True, timeout=1).stdout or "{}")
+        return str(w.get("class") or "")
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return ""
+
+
+def type_text(text):
+    """Last resort when the clipboard helper cannot run: type the text. It
+    never touches the clipboard, but newlines are typed as Enter."""
+    try:
+        r = subprocess.run(["wtype", "-"], input=text.encode(), timeout=60,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def paste(text):
+    """Returns a dict: method, ok, read_by_app, restored and counts."""
+    helper = clipboard_bin()
+    if helper:
+        cmd = [helper, "paste", "--keys", store.paste_keys()]
+        if os.environ.get("OMAVOICE_PASTE_CMD"):
+            cmd += ["--paste-cmd", os.environ["OMAVOICE_PASTE_CMD"]]
+        try:
+            r = subprocess.run(cmd, input=text.encode(), capture_output=True, timeout=20)
+            lines = r.stdout.decode(errors="replace").strip().splitlines()
+            res = json.loads(lines[-1]) if lines else {}
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+            r, res = None, {}
+        if r is not None and r.returncode in (0, 3):
+            res["method"] = "paste"
+            return res
+        log(f"clipboard helper unavailable ({res.get('error', 'failed')}); typing instead")
+    ok = type_text(text)
+    return {"method": "type", "ok": ok, "keystroke": ok, "read_by_app": ok, "restored": True}
+
+
+class Output:
+    def __init__(self):
+        self.state = ""
+        self.rec_start = None
+        self.rec_end = None
+        self.last_key = ""
+
+    def on_state(self):
+        try:
+            with open(STATE, encoding="utf-8") as f:
+                s = f.read().strip().lower()
+        except OSError:
+            return
+        if not s or s == self.state:
+            return
+        now = time.monotonic()
+        if s == "recording":
+            self.rec_start, self.rec_end = now, None
+        elif self.state == "recording":
+            self.rec_end = now
+        self.state = s
+
+    def duration(self):
+        if self.rec_start is None or self.rec_end is None or self.rec_end < self.rec_start:
+            return None
+        if time.monotonic() - self.rec_end > 180:
+            return None
+        return self.rec_end - self.rec_start
+
+    def on_done(self):
+        try:
+            st = os.stat(DONE)
+        except OSError:
+            return
+        key = f"{st.st_ino}:{st.st_mtime_ns}"
+        if key == self.last_key:
+            return
+        self.last_key = key
+        try:
+            with open(DONE, encoding="utf-8") as f:
+                status = json.load(f).get("status", "")
+        except (OSError, json.JSONDecodeError):
+            status = ""
+        text = ""
+        if status == "ok":
+            try:
+                with open(OUT, encoding="utf-8") as f:
+                    text = f.read()
+            except OSError:
+                text = ""
+        for p in (OUT, DONE):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        # Voxtype adds one trailing newline in file mode.
+        if text.endswith("\n"):
+            text = text[:-1]
+        if status != "ok" or not text.strip():
+            self.rec_start = self.rec_end = None
+            return
+        seconds = self.duration()
+        self.rec_start = self.rec_end = None
+        age = time.time() - st.st_mtime
+        words = store.count_words(text)
+        try:
+            store.add(text, seconds, focused_class(), key)
+        except OSError as e:
+            log(f"could not save to history: {e.strerror}")
+        if age > STALE_SECONDS:
+            log(f"found a {words} word dictation from {age:.0f}s ago; saved to history only")
+            notify("Dictation saved to history", "It finished while omavoice-output was not running. Open omavoice to copy it.")
+            return
+        res = paste(text)
+        log(f"{res.get('method')}: {words} words, {seconds or 0:.1f}s, keystroke={res.get('keystroke')} "
+            f"read_by_app={res.get('read_by_app')} restored={res.get('restored')} "
+            f"clipboard_types={res.get('types', 0)} skipped={res.get('skipped_types', 0)} changed={res.get('clipboard_changed', False)}")
+        if not res.get("keystroke"):
+            notify("Dictation not pasted", "The paste keys could not be sent. It is in omavoice history.")
+        elif not res.get("read_by_app") and store.settings().get("notify_unpasted"):
+            notify("Dictation kept in history", "No app took the paste. Open omavoice to copy it.")
+
+
+def watch(out):
+    os.makedirs(WATCH_DIR, exist_ok=True)
+    out.on_state()
+    out.on_done()
+    proc = subprocess.Popen(["inotifywait", "-m", "-q", "-e", "close_write,moved_to", "--format", "%f", WATCH_DIR],
+                            stdout=subprocess.PIPE, text=True)
+    # A second look in case something landed while inotifywait was starting.
+    out.on_done()
+    try:
+        for line in proc.stdout:
+            name = line.rstrip("\n")
+            if name == os.path.basename(STATE):
+                out.on_state()
+            elif name == os.path.basename(DONE):
+                out.on_done()
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def main():
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    out = Output()
+    log(f"watching {WATCH_DIR} (clipboard helper: {'found' if clipboard_bin() else 'missing, will type'})")
+    while True:
+        try:
+            watch(out)
+        except OSError as e:
+            log(f"watch failed: {e.strerror}")
+        # inotifywait exits when the folder goes away (Voxtype restart); wait
+        # for it to come back.
+        time.sleep(1)
+
+
+if __name__ == "__main__":
+    main()

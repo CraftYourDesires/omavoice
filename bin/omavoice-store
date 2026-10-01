@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""omavoice history, stats and settings from the command line.
+
+The omavoice app runs these; they also work by hand. Nothing prints dictation
+text except `list --json`, which the app reads over a pipe.
+
+  omavoice-store list --json          history entries, newest last
+  omavoice-store copy ID              put one entry on the clipboard
+  omavoice-store delete ID            remove one entry
+  omavoice-store clear                remove every entry
+  omavoice-store prune                drop entries past history_days
+  omavoice-store stats [--json]       word counts and words per minute
+  omavoice-store reset-stats          zero the word counts
+  omavoice-store get                  settings as JSON
+  omavoice-store set KEY VALUE        overlay_style neon|trace, history true|false,
+                                      history_days 0|1|7|30|90|365, overlay true|false,
+                                      overlay_position top|bottom, notify_unpasted true|false
+  omavoice-store setup-output CONFIG  point Voxtype's [output] at omavoice-output
+"""
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+import omavoice_store as store  # noqa: E402
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return 0
+    cmd, args = argv[0], argv[1:]
+    if cmd == "list":
+        print(json.dumps(store.entries(), ensure_ascii=False))
+    elif cmd == "copy" and args:
+        if not store.copy(args[0]):
+            print("no such entry, or wl-copy failed", file=sys.stderr)
+            return 1
+        print("copied")
+    elif cmd == "delete" and args:
+        n = store.delete(args[0])
+        print(f"deleted {n}")
+        return 0 if n else 1
+    elif cmd == "clear":
+        print(f"cleared {store.clear()}")
+    elif cmd == "prune":
+        print(f"pruned {store.prune()}")
+    elif cmd == "stats":
+        s = store.stats()
+        if "--json" in args:
+            print(json.dumps(s))
+        else:
+            for name in ("today", "week", "month", "all"):
+                x = s[name]
+                wpm = f"{x['wpm']:.0f} wpm" if x["wpm"] else "no timed dictations"
+                print(f"{name:>6}: {x['words']} words in {x['dictations']} dictations, {wpm}")
+    elif cmd == "reset-stats":
+        store.reset_stats()
+        print("stats reset")
+    elif cmd == "get":
+        print(json.dumps(store.settings()))
+    elif cmd == "set" and len(args) == 2:
+        try:
+            v = store.set_setting(args[0], args[1])
+        except ValueError as e:
+            print(e, file=sys.stderr)
+            return 2
+        print(f"{args[0]} = {json.dumps(v)}")
+    elif cmd == "setup-output" and args:
+        changed = store.configure_voxtype_output(args[0])
+        print("updated [output] for omavoice-output" if changed else "[output] already set for omavoice-output")
+    else:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
