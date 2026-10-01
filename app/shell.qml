@@ -79,8 +79,8 @@ ShellRoot {
               color: "transparent"
               border.width: 2
               border.color: appTheme.accent
-              rotation: appStore.settings.overlay_style === "trace" ? 45 : 0
-              radius: appStore.settings.overlay_style === "trace" ? 0 : 6
+              rotation: appStore.settings.overlay_style === "neon" ? 0 : 45
+              radius: appStore.settings.overlay_style === "neon" ? 6 : 0
               Behavior on rotation { NumberAnimation { duration: 200 } }
             }
             Label { theme: appTheme; text: "omavoice"; font.pixelSize: appTheme.size + 4; font.weight: Font.DemiBold }
@@ -128,7 +128,7 @@ ShellRoot {
           width: parent.width - 40
           anchors.bottom: parent.bottom
           anchors.bottomMargin: 20
-          text: "Overlay: " + (appStore.settings.overlay === false ? "off" : (appStore.settings.overlay_style === "trace" ? "Trace" : "Neon") + ", " + (appStore.settings.overlay_position || "top"))
+          text: "Overlay: " + (appStore.settings.overlay === false ? "off" : ({ trace: "Trace", scope: "Scope", clip: "Clip" }[appStore.settings.overlay_style] || "Neon") + ", " + (appStore.settings.overlay_position || "top"))
             + "\nHistory: " + (appStore.settings.history === false ? "off" : (Number(appStore.settings.history_days) === 0 ? "kept forever" : appStore.settings.history_days + " days"))
             + "\nTheme: " + (appTheme.name || "unknown")
         }

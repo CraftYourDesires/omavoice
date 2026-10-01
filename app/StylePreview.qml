@@ -49,7 +49,8 @@ Item {
     width: 288
     height: 80
     scale: root.zoom
-    sourceComponent: root.style === "trace" ? traceComp : neonComp
+    sourceComponent: root.style === "trace" ? traceComp
+      : (root.style === "scope" || root.style === "clip" ? waveComp : neonComp)
   }
 
   Component {
@@ -77,6 +78,23 @@ Item {
       onset: root.frame.transient
       processing: root.frame.processing
       trace: root.frame.trace || []
+      traceShift: root.frame.traceShift || 0
+      traceSeq: root.frame.traceSeq || 0
+      opacity: root.frame.appear
+    }
+  }
+
+  Component {
+    id: waveComp
+    WaveVisualizer {
+      theme: root.frame.palette || root.theme.overlay
+      variant: root.style === "clip" ? 2 : 0
+      time: root.frame.time
+      level: root.frame.level
+      activity: root.frame.activity
+      onset: root.frame.transient
+      processing: root.frame.processing
+      trace: root.frame.levels || []
       traceShift: root.frame.traceShift || 0
       traceSeq: root.frame.traceSeq || 0
       opacity: root.frame.appear

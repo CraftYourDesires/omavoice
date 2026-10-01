@@ -8,7 +8,7 @@ import "../../shell/omavoice.overlay/OverlayModel.js" as Model
 // scale (device pixel ratio to render at), and optionally switchColors plus
 // switchAt (a frame number) to swap the theme mid-animation the same way the
 // live overlay does when Omarchy changes theme, and style (neon, the default,
-// or trace) to pick the overlay style. peaks (a JSON file holding an array of
+// trace, scope, clip, or bars, the unused wave variant) to pick the style. peaks (a JSON file holding an array of
 // linear 0..1 mic peaks at peaksHz, 47 by default) replays a real voice
 // instead of the fixture, recording the whole time.
 Item {
@@ -18,7 +18,8 @@ Item {
   property var themePalette: Model.paletteFrom(Model.parseColorsToml(readFile(renderArgs.colors || "")))
   property var shownPalette: themePalette
   readonly property int switchAt: renderArgs.switchColors ? Number(renderArgs.switchAt || 0) : -1
-  readonly property string style: renderArgs.style === "trace" ? "trace" : "neon"
+  readonly property string style: renderArgs.style === "trace" ? "trace" : (renderArgs.style === "scope" || renderArgs.style === "clip" || renderArgs.style === "bars" ? "wave" : "neon")
+  readonly property int waveVariant: ({ scope: 0, bars: 1, clip: 2 })[renderArgs.style] || 0
   readonly property var voicePeaks: renderArgs.peaks ? JSON.parse(readFile(renderArgs.peaks)) : null
   readonly property real peaksHz: Number(renderArgs.peaksHz || 47)
   Component.onCompleted: Model.setPalette(driver, themePalette)
@@ -73,6 +74,23 @@ Item {
     processing: viz.processing
   }
 
+  WaveVisualizer {
+    id: lviz
+    width: implicitWidth
+    height: implicitHeight
+    scale: root.pixelRatio
+    transformOrigin: Item.TopLeft
+    theme: root.shownPalette
+    opacity: viz.opacity
+    visible: root.style === "wave"
+    variant: root.waveVariant
+    time: viz.time
+    level: viz.level
+    activity: viz.activity
+    onset: viz.onset
+    processing: viz.processing
+  }
+
   function step(i) {
     if (i === switchAt) Model.setPalette(driver, Model.paletteFrom(Model.parseColorsToml(readFile(renderArgs.switchColors))))
     var t = i / fps
@@ -96,6 +114,9 @@ Item {
     tviz.trace = f.trace
     tviz.traceShift = f.traceShift
     tviz.traceSeq = f.traceSeq
+    lviz.trace = f.levels
+    lviz.traceShift = f.traceShift
+    lviz.traceSeq = f.traceSeq
     shownPalette = f.palette
     return JSON.stringify({
       i: i, t: Math.round(t * 1000) / 1000, phase: f.phase, level: f.level, activity: f.activity,

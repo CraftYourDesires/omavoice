@@ -31,7 +31,8 @@ Item {
 
   // ~/.config/voxtype/omavoice.toml: overlay = false turns it off,
   // overlay_position = "bottom" moves it to the bottom edge, overlay_style
-  // picks "neon" (Visualizer.qml) or "trace" (TraceVisualizer.qml).
+  // picks "neon" (Visualizer.qml), "trace" (TraceVisualizer.qml), or "scope"
+  // and "clip" (WaveVisualizer.qml).
   property bool overlayEnabled: true
   property string position: "top"
   property string overlayStyle: "neon"
@@ -421,7 +422,8 @@ Item {
       Loader {
         id: viz
         anchors.fill: parent
-        sourceComponent: root.overlayStyle === "trace" ? traceStyle : neonStyle
+        sourceComponent: root.overlayStyle === "trace" ? traceStyle
+          : (root.overlayStyle === "scope" || root.overlayStyle === "clip" ? waveStyle : neonStyle)
         opacity: root.frame.appear
         scale: 0.94 + 0.06 * root.frame.appear
       }
@@ -450,6 +452,21 @@ Item {
           onset: root.frame.transient
           processing: root.frame.processing
           trace: root.frame.trace || []
+          traceShift: root.frame.traceShift || 0
+          traceSeq: root.frame.traceSeq || 0
+        }
+      }
+      Component {
+        id: waveStyle
+        WaveVisualizer {
+          theme: root.frame.palette || root.themePalette
+          variant: root.overlayStyle === "clip" ? 2 : 0
+          time: root.frame.time
+          level: root.frame.level
+          activity: root.frame.activity
+          onset: root.frame.transient
+          processing: root.frame.processing
+          trace: root.frame.levels || []
           traceShift: root.frame.traceShift || 0
           traceSeq: root.frame.traceSeq || 0
         }

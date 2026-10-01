@@ -235,7 +235,7 @@ function effectsOf(phase) {
 
 // ---------------------------------------------------------------- settings
 
-var STYLES = ["neon", "trace"]
+var STYLES = ["neon", "trace", "scope", "clip"]
 
 // The overlay's keys from ~/.config/voxtype/omavoice.toml. Commented lines
 // and keys inside [tables] are ignored; anything unknown falls back.
@@ -274,7 +274,9 @@ function traceHash(n) {
 function createTrace() {
   var values = []
   for (var i = 0; i < TRACE.samples; i++) values.push(0)
-  return { values: values, seq: 0, acc: 0, phase: 0 }
+  // levels: the voice level per paper step, newest (live) first. The center
+  // out styles draw this history instead of the pen.
+  return { values: values, levels: values.slice(0), seq: 0, acc: 0, phase: 0 }
 }
 
 // Pen deflection for sample `seq` from the current voice frame. The pen
@@ -306,11 +308,14 @@ function stepTrace(tr, dtMs, frame, processing) {
     tr.phase += 2 * Math.PI * rate * TRACE.stepMs / 1000 * (0.75 + 0.5 * traceHash(tr.seq + 0.5))
     tr.values.pop()
     tr.values.splice(1, 0, traceValue(tr, tr.seq, frame, processing, tr.phase))
+    tr.levels.pop()
+    tr.levels.splice(1, 0, (frame.level || 0) * (1 - processing))
   }
+  tr.levels[0] = (frame.level || 0) * (1 - processing)
   // The live pen heads toward the value it will commit next.
   var next = traceValue(tr, tr.seq + 1, frame, processing, tr.phase + 2 * Math.PI * rate * TRACE.stepMs / 1000)
   tr.values[0] = tr.values[1] + (next - tr.values[1]) * (tr.acc / TRACE.stepMs)
-  return { values: tr.values.slice(0), shift: tr.acc / TRACE.stepMs, seq: tr.seq }
+  return { values: tr.values.slice(0), levels: tr.levels.slice(0), shift: tr.acc / TRACE.stepMs, seq: tr.seq }
 }
 
 // ---------------------------------------------------------------- driver
@@ -381,6 +386,7 @@ function driverStep(drv, dtMs, peak) {
   drv.processing = smooth(drv.processing, drv.phase === "processing" ? 1 : 0, dt, 160)
   var tr = stepTrace(drv.trace, dt, frame, drv.processing)
   frame.trace = tr.values
+  frame.levels = tr.levels
   frame.traceShift = tr.shift
   frame.traceSeq = tr.seq
   drv.time += dt / 1000

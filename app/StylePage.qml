@@ -14,7 +14,9 @@ Flickable {
 
   readonly property var styles: [
     { value: "neon", name: "Neon", blurb: "A glowing waveform pill. Swells with loudness, moves faster when you talk faster, throws thin sparks on stressed syllables." },
-    { value: "trace", name: "Trace", blurb: "A lie detector pen on scrolling paper. Calm baseline in silence, jagged peaks as your voice rises, with grainy ASCII glow in a cyberpunk panel." }
+    { value: "trace", name: "Trace", blurb: "A lie detector pen on scrolling paper. Calm baseline in silence, jagged peaks as your voice rises, with grainy ASCII glow in a cyberpunk panel." },
+    { value: "scope", name: "Scope", blurb: "A synth oscilloscope in the same ASCII panel. Stays in place and reacts instantly: a soft wave when you are quiet, taller with sharper harmonics as you get louder, with a phosphor ghost of the moment before." },
+    { value: "clip", name: "Clip", blurb: "A DAW clip waveform that grows out from the center, so your newest sound is always in the middle and nothing waits for paper to scroll. Goes flat the moment you stop." }
   ]
 
   ColumnLayout {
@@ -27,7 +29,7 @@ Flickable {
     Label { theme: root.theme; heading: true; text: "Overlay style" }
     Label {
       theme: root.theme; dim: true; Layout.fillWidth: true
-      text: "What shows at the top of the screen while you dictate. Both follow your Omarchy theme and switch the next time the overlay opens, or right away if it is showing."
+      text: "What shows on screen while you dictate. Every style follows your Omarchy theme and switches the next time the overlay opens, or right away if it is showing."
     }
 
     GridLayout {
