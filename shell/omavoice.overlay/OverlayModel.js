@@ -12,9 +12,17 @@ var DEFAULTS = {
   maxFloorDb: -28,
   floorRiseDbPerSec: 2.5, // the floor creeps up so a steady hum stops counting
   gateDb: 5,           // speech must clear the floor by this much
-  spanDb: 42,          // dB above the gate that maps to full level
-  attackMs: 28,
-  releaseMs: 170,
+  spanDb: 42,          // dB above the gate that maps to full level before the ceiling has adapted
+  // Loudness ceiling: follows your recent loud syllables (fast up, slow down)
+  // so your normal voice lands mid-scale on any mic, and only speaking louder
+  // than that reaches the top.
+  ceilingAttackMs: 80,
+  ceilingDecayDbPerSec: 2.5,
+  ceilingMinSpanDb: 22,
+  headroomDb: 9,
+  curve: 1.5,          // >1 spreads quiet and normal speech further apart
+  attackMs: 20,
+  releaseMs: 110,
   slowMs: 420,
   speechThreshold: 0.1,
   holdMs: 320,         // speech gate hangover, bridges gaps between words
@@ -45,6 +53,7 @@ function createAnalyzer(options) {
     pendingPeak: 0,
     hasPeak: false,
     floorDb: o.floorDb,
+    ceilDb: o.floorDb + o.gateDb + o.spanDb - o.headroomDb,
     target: 0,
     env: 0,
     slow: 0,
@@ -106,8 +115,12 @@ function tick(st, dtMs) {
   else st.floorDb += o.floorRiseDbPerSec * dt / 1000
   st.floorDb = clamp(st.floorDb, o.minFloorDb, o.maxFloorDb)
 
-  var raw = clamp((db - (st.floorDb + o.gateDb)) / o.spanDb, 0, 1)
-  st.target = Math.pow(raw, 0.8)
+  var gate = st.floorDb + o.gateDb
+  if (db > st.ceilDb) st.ceilDb = smooth(st.ceilDb, db, dt, o.ceilingAttackMs)
+  else st.ceilDb -= o.ceilingDecayDbPerSec * dt / 1000
+  st.ceilDb = Math.max(st.ceilDb, gate + o.ceilingMinSpanDb)
+  var raw = clamp((db - gate) / (st.ceilDb + o.headroomDb - gate), 0, 1)
+  st.target = Math.pow(raw, o.curve)
 
   st.env = smooth(st.env, st.target, dt, st.target > st.env ? o.attackMs : o.releaseMs)
   st.slow = smooth(st.slow, st.env, dt, o.slowMs)
@@ -161,6 +174,7 @@ function frameOf(st) {
     intensity: st.intensity,
     cadenceHz: st.cadenceHz,
     floorDb: st.floorDb,
+    ceilDb: st.ceilDb,
     flow: st.flow,
     amps: st.amps.slice(0)
   }
@@ -247,8 +261,8 @@ function parseSettings(raw) {
 
 var TRACE = {
   samples: 64,
-  stepMs: 1000 / 30,   // paper speed: 30 samples a second, about 2 s on screen
-  swingHz: 5.2,        // base pen oscillation while speaking
+  stepMs: 1000 / 40,   // paper speed: 40 samples a second, about 1.5 s on screen
+  swingHz: 5.2,        // how fast the pen swings while transcribing
   tremor: 0.035        // calm baseline wobble in silence
 }
 
@@ -263,27 +277,29 @@ function createTrace() {
   return { values: values, seq: 0, acc: 0, phase: 0 }
 }
 
-// Pen deflection for sample `seq` from the current voice frame.
+// Pen deflection for sample `seq` from the current voice frame. The pen
+// zigzags with a random reach on every sample and its height is the voice
+// level right then, so every syllable draws its own burst: soft words stay
+// low, stressed ones jump, and pauses go flat.
 function traceValue(tr, seq, frame, processing, phase) {
   var lvl = clamp(frame.level || 0, 0, 1)
   var r1 = traceHash(seq), r2 = traceHash(seq * 1.618 + 3.1), r3 = traceHash(seq * 0.731 + 11.7)
   var calm = TRACE.tremor * (r1 - 0.5) * 2 * (1 - 0.6 * processing)
-  var wild = Math.pow(lvl, 1.25)
-  // The swing grows with loudness; jagged noise and spikes grow faster, so a
-  // quiet voice draws soft waves and a loud one wild peaks.
-  var swing = Math.sin(phase) * (0.2 + 0.8 * lvl) * lvl * 1.15
-  var jag = (r2 - 0.5) * 1.1 * wild
-  var spike = (frame.transient || 0) > 0.06 && r3 > 0.55 ? (r1 > 0.5 ? 1 : -1) * clamp(frame.transient * 3.2, 0, 0.95) : 0
-  var v = calm + (swing + jag + spike) * (1 - processing)
+  var sign = seq % 2 === 0 ? 1 : -1
+  // Now and then the pen holds its side for a sample, so the bursts are not
+  // a perfectly regular comb.
+  if (r3 < 0.18) sign = -sign
+  var reach = 0.35 + 0.65 * r2
+  var kick = (frame.transient || 0) > 0.05 && r1 > 0.6 ? clamp(frame.transient * 1.2, 0, 0.2) : 0
+  var v = calm + sign * clamp(lvl * reach * 0.9 + kick, 0, 1) * (1 - processing)
   // While transcribing the pen settles into a slow, small sine.
-  v += processing * 0.07 * Math.sin(seq * 0.21)
+  v += processing * 0.07 * Math.sin(phase)
   return clamp(v, -1, 1)
 }
 
 function stepTrace(tr, dtMs, frame, processing) {
-  var cadence = frame.cadenceHz || 0
   tr.acc += dtMs
-  var rate = TRACE.swingHz + 0.9 * cadence
+  var rate = TRACE.swingHz * 0.25
   while (tr.acc >= TRACE.stepMs) {
     tr.acc -= TRACE.stepMs
     tr.seq++

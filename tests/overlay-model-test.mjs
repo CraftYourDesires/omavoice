@@ -295,7 +295,7 @@ const ROLES = ["core", "mid", "rim", "spark", "line", "halo", "edge", "backgroun
     else if (b.traceSeq === a.traceSeq) scrolled = scrolled && b.trace[1] === a.trace[1] && b.traceShift >= a.traceShift
   }
   check("committed samples only scroll, they never redraw", scrolled)
-  check("paper moves about 30 samples a second", Math.abs(frames[180].traceSeq - frames[120].traceSeq - 30) <= 1,
+  check("paper moves about 40 samples a second", Math.abs(frames[180].traceSeq - frames[120].traceSeq - 40) <= 1,
     `${frames[180].traceSeq - frames[120].traceSeq} in 1 s`)
   const proc = frames.filter(f => f.phase === "processing" && f.processing > 0.9)
   check("processing settles the pen", proc.length > 10 && Math.max(...proc.map(f => Math.abs(f.trace[0]))) < 0.1)

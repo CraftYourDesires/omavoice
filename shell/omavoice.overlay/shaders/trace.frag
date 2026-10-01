@@ -134,7 +134,7 @@ void main() {
     float inside = clamp(0.5 - sd / aa, 0.0, 1.0);
 
     xLeft = c.x - hs.x + 8.0;
-    xPen = c.x + hs.x - 22.0;
+    xPen = c.x + hs.x - 7.0;
     dxS = (xPen - xLeft) / float(N - 3);
     yMid = c.y;
     amp = hs.y - 7.0;
@@ -161,7 +161,7 @@ void main() {
     float plotMask = smoothstep(xLeft - 4.0, xLeft + 10.0, p.x) * (1.0 - smoothstep(xPen + 4.0, xPen + 6.0, p.x));
     // The pen side fades in the way the old paper fades out on the left,
     // instead of the trace starting abruptly at the right edge.
-    float penFade = 1.0 - smoothstep(xPen - 40.0, xPen + 4.0, p.x);
+    float penFade = 1.0 - smoothstep(xPen - 14.0, xPen + 2.0, p.x);
     col = mix(col, colLine.rgb, (grid + base) * plotMask);
 
     // Glow field of the trace, then ASCII glyphs quantize it.
@@ -182,7 +182,7 @@ void main() {
     float flick = hash21(ci + floor(time * 14.0)) - 0.5;
     lum = exp(-dc * dc / (spread * spread)) * (0.35 + 0.65 * cellAge) + under * 0.18 * cellAge
         + 0.06 + sweep * 0.55 + flick * (0.1 + 0.12 * level);
-    lum = clamp(lum, 0.0, 0.999) * plotMask * (1.0 - smoothstep(xPen - 40.0, xPen + 4.0, cc.x));
+    lum = clamp(lum, 0.0, 0.999) * plotMask * (1.0 - smoothstep(xPen - 14.0, xPen + 2.0, cc.x));
     int gi = int(lum * 10.0);
     vec2 lp = floor(p - (cc - cell * 0.5));   // pixel inside the cell, 0..3 x 0..5
     float on = 0.0;
@@ -208,19 +208,11 @@ void main() {
     vec3 ink = mix(colRim.rgb, colSpark.rgb, 0.55 + 0.45 * age);
     col = mix(col, ink, vec3(coreR, coreG, coreB) * (0.45 + 0.55 * age) * plotMask * penFade);
 
-    // Stylus: arm from the right edge, head on the live pen, ruler ticks.
+    // Live pen: a soft glow where the newest ink enters, lit by speech.
     vec2 pen = pt(0);
-    float arm = (1.0 - smoothstep(0.3, 1.0, abs(p.y - pen.y))) * step(pen.x + 3.0, p.x) * step(p.x, c.x + hs.x - 5.0);
-    col = mix(col, colLine.rgb, arm * 0.35 * penFade);
-    float rulerX = c.x + hs.x - 7.0;
-    float tick = (1.0 - smoothstep(0.3, 1.0, abs(fract((p.y - yMid) / (amp / 4.0) + 0.5) - 0.5) * amp / 4.0))
-               * step(abs(p.x - rulerX), 2.0) * step(abs(p.y - yMid), amp + 0.5);
-    col = mix(col, colLine.rgb, tick * 0.3);
-    float headR = 2.0 + 1.6 * onset + 0.8 * level;
     float head = length(p - pen);
-    col = mix(col, colCore.rgb, (1.0 - smoothstep(headR - 0.6, headR + 0.6, head)) * penFade);
-    if (dark > 0.5) col += colCore.rgb * exp(-head * head / (18.0 + 40.0 * level)) * (0.35 + 0.5 * activity) * dark * penFade;
-    else col = mix(col, colCore.rgb, exp(-head * head / (18.0 + 40.0 * level)) * 0.25 * penFade);
+    if (dark > 0.5) col += colCore.rgb * exp(-head * head / (30.0 + 60.0 * level)) * (0.15 + 0.45 * activity) * dark * inside;
+    else col = mix(col, colCore.rgb, exp(-head * head / (30.0 + 60.0 * level)) * 0.2);
 
     // Rim: thin edge, brighter HUD brackets along the chamfers.
     float edge = 1.0 - smoothstep(0.0, 1.1, abs(sd + 0.6));

@@ -8,7 +8,9 @@ import "../../shell/omavoice.overlay/OverlayModel.js" as Model
 // scale (device pixel ratio to render at), and optionally switchColors plus
 // switchAt (a frame number) to swap the theme mid-animation the same way the
 // live overlay does when Omarchy changes theme, and style (neon, the default,
-// or trace) to pick the overlay style.
+// or trace) to pick the overlay style. peaks (a JSON file holding an array of
+// linear 0..1 mic peaks at peaksHz, 47 by default) replays a real voice
+// instead of the fixture, recording the whole time.
 Item {
   id: root
   readonly property real fps: Number(renderArgs.fps || 60)
@@ -17,6 +19,8 @@ Item {
   property var shownPalette: themePalette
   readonly property int switchAt: renderArgs.switchColors ? Number(renderArgs.switchAt || 0) : -1
   readonly property string style: renderArgs.style === "trace" ? "trace" : "neon"
+  readonly property var voicePeaks: renderArgs.peaks ? JSON.parse(readFile(renderArgs.peaks)) : null
+  readonly property real peaksHz: Number(renderArgs.peaksHz || 47)
   Component.onCompleted: Model.setPalette(driver, themePalette)
 
   readonly property real pixelRatio: Number(renderArgs.scale || 1)
@@ -72,8 +76,15 @@ Item {
   function step(i) {
     if (i === switchAt) Model.setPalette(driver, Model.paletteFrom(Model.parseColorsToml(readFile(renderArgs.switchColors))))
     var t = i / fps
-    Model.setVoxState(driver, Model.fixtureVoxState(t))
-    var f = Model.driverStep(driver, 1000 / fps, Model.fixturePeak(t))
+    var peak
+    if (voicePeaks) {
+      Model.setVoxState(driver, "recording")
+      peak = voicePeaks[Math.min(Math.floor(t * peaksHz), voicePeaks.length - 1)]
+    } else {
+      Model.setVoxState(driver, Model.fixtureVoxState(t))
+      peak = Model.fixturePeak(t)
+    }
+    var f = Model.driverStep(driver, 1000 / fps, peak)
     viz.time = f.time
     viz.flow = f.flow
     viz.level = f.level
