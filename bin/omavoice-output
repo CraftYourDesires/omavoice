@@ -30,6 +30,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
 import omavoice_store as store  # noqa: E402
+import omavoice_trace  # noqa: E402
 
 OUT = os.environ.get("OMAVOICE_OUTPUT_FILE") or store.output_file()
 DONE = OUT + ".done"
@@ -172,7 +173,14 @@ class Output:
             log(f"found a {words} word dictation from {age:.0f}s ago; saved to history only")
             notify("Dictation saved to history", "It finished while omavoice-output was not running. Open omavoice to copy it.")
             return
+        paste_start = time.monotonic()
         res = paste(text)
+        paste_ms = (time.monotonic() - paste_start) * 1000
+        try:
+            # Opt-in only (omavoice-trace start); a no-op otherwise.
+            omavoice_trace.capture(time.time(), paste_ms, text)
+        except OSError as e:
+            log(f"trace not saved: {e.strerror}")
         log(f"{res.get('method')}: {words} words, {seconds or 0:.1f}s, keystroke={res.get('keystroke')} "
             f"read_by_app={res.get('read_by_app')} restored={res.get('restored')} "
             f"clipboard_types={res.get('types', 0)} skipped={res.get('skipped_types', 0)} changed={res.get('clipboard_changed', False)}")

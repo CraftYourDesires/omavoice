@@ -149,6 +149,7 @@ omavoice depends on details of Voxtype 1.0.1 (its chunk log lines and how it sti
 |---|---|
 | `omavoice-doctor` | Checks the chunk log format, transcription of a known clip, GPU acceleration, the running service, the LLM cleanup, live cleanup, the paste path (file mode, omavoice-output, omavoice-clipboard) and the update hold |
 | `omavoice-upgrade` | Tests, installs and verifies a new Voxtype, with automatic rollback |
+| `omavoice-trace start [N]` | Traces your next N dictations: what the speech model heard, what replacements and cleanup changed (`omavoice-trace show`), and how long each step took after you released the key (`omavoice-trace summary`). `omavoice-trace clear` deletes it all |
 | `omavoice-hold [--release]` | Adds or removes the `IgnorePkg` hold |
 
 Even when something does break, dictation keeps working: a CUDA failure falls back to the CPU, a cleanup failure pastes the raw transcript, and a live cleanup mismatch falls back to a full cleanup.
@@ -157,6 +158,7 @@ Even when something does break, dictation keeps working: a CUDA failure falls ba
 
 - Audio, transcripts and cleanup never leave the machine. The LLM runs in a local Ollama bound to 127.0.0.1, and screen context is only sent there.
 - Voxtype's chunk log, which contains your words, lives in RAM (`$XDG_RUNTIME_DIR`) instead of the on-disk journal, and is emptied at the start of every recording.
+- `omavoice-trace` is off unless you start it, and stops by itself after the number of dictations you asked for. Its records hold text only (no audio, no screen context), live in RAM (`$XDG_RUNTIME_DIR/omavoice-trace`, folder 0700, files 0600), and are deleted after 24 hours, on `omavoice-trace clear`, or at logout.
 - The recording overlay only ever sees the microphone's peak level, never audio samples, and stores nothing. Its monitor stream exists only while Voxtype is recording.
 - History is kept in `~/.local/share/omavoice/history.jsonl` (folder 0700, file 0600), final text only: no audio, no partial chunks. It is pruned to your chosen retention on every dictation and when you change it, and `history = false` stops saving text. Word stats (`stats.json`) hold counts only and stay when you clear history.
 - Voxtype's finished text sits in RAM only until omavoice-output reads it, then it is deleted. Your clipboard snapshot during a paste lives in memory only. Neither the service, the helper nor the tests ever log dictation or clipboard content.
@@ -186,6 +188,7 @@ The render test covers four themes (your current one, Tokyo Night, Gruvbox and C
 Dictation output, history, the dictionary editor and the app:
 
 ```bash
+tests/trace-test.py                     # omavoice-trace on a synthetic log: stages, timings, armed count, permissions, expiry, no screen context
 tests/store-test.py                     # word counts, history save and dedup, permissions, retention, stats, settings, Voxtype [output] migration
 node tests/dictionary-test.mjs          # dictionary editor: byte-exact round trips, one-line edits, sections, what dictation-cleanup reads
 tests/clipboard-test.py                 # omavoice-clipboard on the live session: every format restored byte for byte, empty clipboard, no reader, a newer copy wins

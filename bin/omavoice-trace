@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""See where your dictations change wording and where the time goes.
+
+Usage:
+  omavoice-trace start [N]   trace the next N dictations (default 10)
+  omavoice-trace status      how many are left and how many are saved
+  omavoice-trace show        each traced dictation: word changes per stage and timings
+  omavoice-trace summary     averages only, no text
+  omavoice-trace clear       stop and delete every trace record
+
+Records stay in RAM ($XDG_RUNTIME_DIR/omavoice-trace, only you can read
+them) and are deleted after 24 hours, on clear, or at logout. Nothing is
+written to disk or to the journal. Word changes in show:
+[-removed-] and {+added+}.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+import omavoice_trace as trace  # noqa: E402
+
+STEPS = (("tail", "speech model done"), ("cleanup_start", "cleanup starts"), ("cleanup_end", "cleanup done"),
+         ("written", "text ready"), ("pasted", "pasted"))
+
+
+def timings(r):
+    ms = r.get("ms_after_release", {})
+    return "  ".join(f"{label} {ms[k]}ms" for k, label in STEPS if k in ms)
+
+
+def show(records):
+    for n, r in enumerate(records, 1):
+        print(f"── dictation {n}: {r.get('audio_seconds') or '?'}s of audio, {len(r.get('chunks') or [])} chunks")
+        print(f"   after release: {timings(r)}")
+        for k in ("raw", "input", "final"):
+            if r.get(k + "_missing"):
+                print(f"   {k}: not in the log")
+        print(f"   speech model:  {r.get('raw') or ''}")
+        print(f"   replacements:  {trace.word_diff(r.get('raw'), r.get('input'))}")
+        print(f"   cleanup:       {trace.word_diff(r.get('input'), r.get('final'))}")
+        print()
+
+
+def summary(records):
+    if not records:
+        print("No traced dictations yet.")
+        return
+    tot = {"rep": [0, 0], "llm": [0, 0], "words": 0}
+    ms = {}
+    for r in records:
+        tot["words"] += len((r.get("raw") or "").split())
+        for key, (a, b) in (("rep", ("raw", "input")), ("llm", ("input", "final"))):
+            rem, add = trace.changed_words(r.get(a), r.get(b))
+            tot[key][0] += rem
+            tot[key][1] += add
+        for k, v in r.get("ms_after_release", {}).items():
+            ms.setdefault(k, []).append(v)
+    print(f"{len(records)} dictations, {tot['words']} words from the speech model")
+    print(f"replacements changed: {tot['rep'][0]} words out, {tot['rep'][1]} in")
+    print(f"cleanup changed:      {tot['llm'][0]} words out, {tot['llm'][1]} in")
+    print("median after release: " + "  ".join(
+        f"{label} {sorted(ms[k])[len(ms[k]) // 2]}ms" for k, label in STEPS if k in ms))
+
+
+def main(args):
+    cmd = args[0] if args else "status"
+    trace.purge_expired()
+    if cmd == "start":
+        n = int(args[1]) if len(args) > 1 else 10
+        trace.start(n)
+        print(f"Tracing the next {n} dictations. See them with: omavoice-trace show")
+    elif cmd == "status":
+        print(f"{trace.remaining()} left to trace, {len(trace.load())} saved")
+    elif cmd == "show":
+        show(trace.load())
+    elif cmd == "summary":
+        summary(trace.load())
+    elif cmd == "clear":
+        trace.clear()
+        print("Trace stopped and records deleted.")
+    else:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
