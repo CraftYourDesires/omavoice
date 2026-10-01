@@ -10,6 +10,25 @@ with Codex (diagnosis, then a revision after review by Claude).
 2. When the speaker backs up and restates ("Tuesday, actually no, Wednesday",
    or a restart with no cue word), keep only the final version.
 
+## Added: speech model A/B (Cohere Transcribe vs Parakeet TDT 0.6B v3)
+
+Before tuning cleanup, test the transcription engine itself on the user's own
+voice. Voxtype 1.0.1 already includes a Parakeet engine (with an optional
+streaming mode), so this is a config switch, not a rebuild. Parakeet v3 is
+0.6B parameters (Cohere is 2B) with a transducer decoder built for speed, and
+scores about 4.96% average WER on the seven Open ASR sets where Cohere scores
+about 5.84% (Cohere's launch numbers without TED-LIUM); Cohere is ahead on
+clean read speech and meetings. Phonon-2 (a 164MB quantization of the same
+Parakeet) was considered and rejected: its gain is size, it costs accuracy,
+and it needs its own runtime instead of Voxtype.
+
+- Data: a fixed set of the user's recordings with hand-checked transcripts
+  (read passages plus natural dictation with restarts), kept private.
+- Measure: WER after cleanup and before it, release-to-text latency (tail
+  transcription time), VRAM, and the chunked eager path for long dictations.
+- Decide: switch the default only if Parakeet is at least as accurate on the
+  user's voice and faster, or clearly more accurate at similar speed.
+
 ## Core idea
 
 The cleanup model stops writing text. It receives the transcript as numbered
