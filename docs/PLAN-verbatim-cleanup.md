@@ -10,6 +10,23 @@ with Codex (diagnosis, then a revision after review by Claude).
 2. When the speaker backs up and restates ("Tuesday, actually no, Wednesday",
    or a restart with no cue word), keep only the final version.
 
+## Step 1 findings (10 traced dictations, 2026-09-30)
+
+- Wording: the speech model is close to verbatim. Replacements changed 1 word
+  in 454; the cleanup removed 14 words and added 2, almost all fillers
+  ("like", "um") plus one restart repair. Rewording is a small problem; the
+  delete-only contract (step 2) is still worth it as a guarantee, but it is
+  not the main gap.
+- Real word errors were speech model mishearings of names and jargon
+  ("WhisperFlow", "glass anamorphism", "Omachi"). Fixed with dictionary
+  hints and replacements; this is where accuracy work pays off most.
+- Speed: median release-to-paste was 4.4s. About 3s of it was Ollama
+  reloading the cleanup model because dictation-record warmed it with a
+  different num_ctx (fixed in bb51c4b; cleanup now about 0.42s). What is left:
+  the speech model finishing the audio after release (0.6 to 1.3s, worst for
+  15 to 20s dictations, which have no finished eager chunk yet) and the paste
+  (about 0.4s). Next: try 10s eager chunks and the Parakeet A/B below.
+
 ## Added: speech model A/B (Cohere Transcribe vs Parakeet TDT 0.6B v3)
 
 Before tuning cleanup, test the transcription engine itself on the user's own
