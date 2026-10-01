@@ -1,0 +1,6 @@
+[Unit]
+Description=omavoice: weekly review of likely mishearings in your dictations
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/omavoice-dictionary-review run

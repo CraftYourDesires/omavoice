@@ -150,6 +150,7 @@ omavoice depends on details of Voxtype 1.0.1 (its chunk log lines and how it sti
 | `omavoice-doctor` | Checks the chunk log format, transcription of a known clip, GPU acceleration, the running service, the LLM cleanup, live cleanup, the paste path (file mode, omavoice-output, omavoice-clipboard) and the update hold |
 | `omavoice-upgrade` | Tests, installs and verifies a new Voxtype, with automatic rollback |
 | `omavoice-trace start [N]` | Traces your next N dictations: what the speech model heard, what replacements and cleanup changed (`omavoice-trace show`), and how long each step took after you released the key (`omavoice-trace summary`). `omavoice-trace clear` deletes it all |
+| `omavoice-dictionary-review` | Runs every Sunday at 21:45 (`omavoice-dictionary-review.timer`): finds likely mishearings in the last week of history, near misses of your dictionary terms plus names and jargon the local cleanup model flags, and opens a window to approve each one. Approving adds the right spelling to `dictionary.txt` with a `misheard as` hint and, if you choose, an exact word replacement in `config.toml` (validated before saving). Run it any time with `omavoice-dictionary-review run` |
 | `omavoice-doctor --fix-mic` | When dictation only produces symbols, the microphone is silent; this points EasyEffects back at a real microphone and restarts it |
 | `omavoice-hold [--release]` | Adds or removes the `IgnorePkg` hold |
 
@@ -189,6 +190,7 @@ The render test covers four themes (your current one, Tokyo Night, Gruvbox and C
 Dictation output, history, the dictionary editor and the app:
 
 ```bash
+tests/review-test.py                    # weekly dictionary review on synthetic data: near misses, filters, ignore list, dictionary and validated config edits
 tests/trace-test.py                     # omavoice-trace on a synthetic log: stages, timings, armed count, permissions, expiry, no screen context
 tests/store-test.py                     # word counts, history save and dedup, permissions, retention, stats, settings, Voxtype [output] migration
 node tests/dictionary-test.mjs          # dictionary editor: byte-exact round trips, one-line edits, sections, what dictation-cleanup reads

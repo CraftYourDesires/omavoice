@@ -1,0 +1,10 @@
+[Unit]
+Description=omavoice: weekly dictionary review (Sunday evening)
+
+[Timer]
+OnCalendar=Sun 21:45
+# Runs at the next login when the machine was off on Sunday evening.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -78,6 +78,7 @@ mkdir -p "$HOME/.local/bin" "$units/voxtype.service.d" "$cfg"
 for f in "$repo"/bin/*; do ln -sfn "$f" "$HOME/.local/bin/$(basename "$f")"; done
 ln -sfn "$repo/systemd/voxtype.service.d/override.conf" "$units/voxtype.service.d/override.conf"
 ln -sfn "$repo/systemd/omavoice-output.service" "$units/omavoice-output.service"
+for u in omavoice-dictionary-review.service omavoice-dictionary-review.timer; do ln -sfn "$repo/systemd/$u" "$units/$u"; done
 if [[ $cleanup == true ]]; then
   if systemctl is-enabled ollama.service >/dev/null 2>&1; then
     echo "System-wide ollama.service is enabled; using it instead of a user service."
@@ -160,6 +161,9 @@ fi
 systemctl --user enable omavoice-output.service >/dev/null 2>&1 || true
 systemctl --user restart omavoice-output.service
 systemctl --user enable voxtype.service >/dev/null 2>&1 || true
+# Sunday 21:45: suggest dictionary entries for likely mishearings.
+systemctl --user daemon-reload
+systemctl --user enable --now omavoice-dictionary-review.timer >/dev/null 2>&1 || true
 systemctl --user restart voxtype.service
 
 step "Recording overlay"
