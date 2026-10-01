@@ -166,6 +166,13 @@ void main() {
 
     if (F == 1) {
         // ---------------- glass
+        // Built as premultiplied layers over a thin frost tint, like iOS
+        // materials: the panel itself is mostly clear, so the Hyprland layer
+        // blur behind it (hyprland/overlay-blur.lua) is what you see, and
+        // only the light in and on the glass adds opacity. The tint must stay
+        // above that rule's ignore_alpha (0.15) so the whole panel is blurred.
+        vec3 pc = vec3(0.0);
+        float pA = 0.0;
         float rimW = 11.0;
         float t = clamp(1.0 + sd / rimW, 0.0, 1.0);
         vec3 n = normalize(vec3(g * 1.25 * t * t, 1.0));
@@ -173,31 +180,32 @@ void main() {
         float fres = pow(1.0 - n.z, 1.6);
         float v = clamp((p.y - (C.y - HS.y)) / (2.0 * HS.y), 0.0, 1.0);
 
-        vec3 tint = mix(colBg.rgb, colRim.rgb, 0.10);
-        col = tint * mix(1.25, 0.82, v) + (dark > 0.5 ? 0.035 : 0.0) * (1.0 - v);
-        col += (vnoise(p * 0.9) - 0.5) * 0.03;
-        // Translucent, so the Hyprland layer blur (hyprland/overlay-blur.lua)
-        // shows through as frost; keep it above that rule's ignore_alpha.
-        bodyA = mix(0.47, 0.5, dark);
+        // Frost: a light veil, a touch brighter at the top, tinted by the theme.
+        vec3 frost = dark > 0.5 ? mix(colBg.rgb, white, 0.07) : mix(colBg.rgb, white, 0.55);
+        frost = mix(frost, colRim.rgb, 0.08) * mix(1.12, 0.9, v);
+        float frostA = mix(0.2, 0.24, dark) + (vnoise(p * 0.9) - 0.5) * 0.02;
+        pc = frost * frostA; pA = frostA;
 
         float xL = C.x - HS.x + 10.0;
         float xR = C.x + HS.x - 10.0;
         float amp = HS.y - 9.0;
         float plotMask = smoothstep(xL - 6.0, xL + 14.0, p.x) * (1.0 - smoothstep(xR - 14.0, xR + 6.0, p.x));
 
+        #define OVER(c, a) { float a_ = clamp(a, 0.0, 1.0); pc = (c) * a_ + pc * (1.0 - a_); pA = a_ + pA * (1.0 - a_); }
+
         // Light leaking through the glass under the voice.
         float bloom = gaussian(length(vec2((p.x - C.x) * 0.22, p.y - C.y)), 12.0 + 20.0 * lv);
-        col += colCore.rgb * bloom * (0.06 + 0.28 * activity) * (dark > 0.5 ? 1.0 : 0.5);
+        OVER(colCore.rgb, bloom * (0.05 + 0.22 * activity));
 
-        // The waveform casts a soft shadow on the back pane.
+        // The waveform casts a soft shadow inside the glass.
         float dS = scopeDist(p - vec2(2.5, 4.5), C.y, lv, time, xL, xR, amp);
-        col *= 1.0 - 0.38 * gaussian(dS, 3.2) * plotMask;
+        OVER(vec3(0.0), mix(0.12, 0.2, dark) * gaussian(dS, 3.4) * plotMask);
 
         // Liquid fill between the curve and the midline.
         float y = C.y + scopeOff(p.x, lv, time, xL, xR, amp);
         float filled = (p.y - C.y) * (y - C.y) > 0.0 && abs(p.y - C.y) < abs(y - C.y) ? 1.0 : 0.0;
         float depthIn = abs(p.y - C.y) / max(abs(y - C.y), 1.0);
-        col = mix(col, colRim.rgb, filled * plotMask * (0.12 + 0.22 * depthIn));
+        OVER(colRim.rgb, filled * plotMask * (0.1 + 0.2 * depthIn));
 
         // The scope's dithered ASCII glow, etched into the glass: each 4x6
         // cell picks a glyph by how close its center is to the voice.
@@ -222,55 +230,47 @@ void main() {
             on = mod(floor(float(glyph(gi)) / exp2(bit)), 2.0);
         }
         vec3 asciiCol = mix(colMid.rgb, colRim.rgb, clamp(lum * 1.2, 0.0, 1.0));
-        float asciiA = on * (0.22 + 0.45 * lum) * mix(0.75, 1.0, dark);
-        col = mix(col, asciiCol, asciiA);
-        bodyA = max(bodyA, asciiA * 0.9);
+        if (dark < 0.5) asciiCol *= 0.8;
+        OVER(asciiCol, on * (0.25 + 0.5 * lum));
 
         float d = scopeDist(p, C.y, lv, time, xL, xR, amp);
         float ghost = scopeDist(p, C.y, Lf(4.0), time - 0.09, xL, xR, amp);
         float sigma = 2.4 + 5.0 * lv + 3.0 * onset;
         vec3 glowCol = mix(colRim.rgb, colSpark.rgb, 0.3);
-        col += glowCol * gaussian(d, sigma) * plotMask * (dark > 0.5 ? 0.55 : 0.35);
-        col = mix(col, colRim.rgb, (1.0 - smoothstep(0.6, 1.6, ghost)) * 0.3 * plotMask);
+        OVER(glowCol, gaussian(d, sigma) * plotMask * 0.5);
+        OVER(colRim.rgb, (1.0 - smoothstep(0.6, 1.6, ghost)) * 0.35 * plotMask);
         float w = 0.85 + 0.35 * lv;
         float core = 1.0 - smoothstep(w - 0.5, w + 0.7, d);
         // A glass tube: hot white center, colored edges.
         float tube = 1.0 - smoothstep(0.0, w + 0.6, d);
-        col = mix(col, mix(colRim.rgb, colSpark.rgb, 0.6), core * plotMask);
-        col = mix(col, white, tube * tube * 0.55 * plotMask);
-        // The light inside the glass is solid even where the pane is clear.
-        bodyA = max(bodyA, max(tube, gaussian(d, sigma) * 0.6) * plotMask);
+        OVER(mix(colRim.rgb, colSpark.rgb, 0.6), core * plotMask);
+        OVER(white, tube * tube * 0.55 * plotMask);
 
-        // Glass surface in front of everything: rim, fresnel, gloss.
-        col *= 1.0 - 0.18 * t * t * (0.5 + 0.5 * g.y);
-        col += mix(colRim.rgb, white, 0.65) * fres * (0.25 + 0.55 * max(diff, 0.0));
+        // The glass surface, in front of everything: fresnel edge light,
+        // a top gloss, a specular streak, a caustic along the bottom edge.
+        OVER(mix(colRim.rgb, white, 0.7), fres * (0.22 + 0.5 * max(diff, 0.0)));
         float gsd = sdChamfer(p - C - vec2(0.0, -HS.y * 0.5), vec2(HS.x - 9.0, HS.y * 0.34), 6.0);
         float gfade = pow(clamp(1.0 - (p.y - (C.y - HS.y + 2.5)) / (HS.y * 0.85), 0.0, 1.0), 1.4);
         float gloss = (1.0 - smoothstep(-1.5, 1.5, gsd)) * gfade;
-        col += white * gloss * mix(0.26, 0.2, dark);
-        // A crisp specular streak on the top left shoulder of the dome.
+        OVER(white, gloss * mix(0.2, 0.13, dark));
         vec2 sp = (p - vec2(C.x - HS.x + 40.0, C.y - HS.y + 4.0)) / vec2(24.0, 1.4);
-        col += white * gaussian(length(sp), 1.0) * 0.55;
-        // The far wall: a darker band under the gloss, a soft bounce at the bottom.
-        col *= 1.0 - 0.16 * gaussian(p.y - (C.y - HS.y * 0.05), HS.y * 0.25) * (1.0 - plotMask * 0.5);
-        col += mix(colRim.rgb, white, 0.5) * gaussian(p.y - (C.y + HS.y * 0.72), 3.5) * gaussian(p.x - C.x, HS.x * 0.7) * 0.07;
-        bodyA = max(bodyA, gloss * 0.3);
-        // Caustic: light bent along the bottom inside edge.
+        OVER(white, gaussian(length(sp), 1.0) * 0.6);
         float caustic = gaussian(sd + 3.0, 1.6) * smoothstep(0.1, 0.9, g.y);
-        col += mix(colRim.rgb, white, 0.4) * caustic * (0.22 + 0.25 * activity);
+        OVER(mix(colRim.rgb, white, 0.4), caustic * (0.25 + 0.25 * activity));
         // Hairline edge, bright where it faces the light.
         float hair = 1.0 - smoothstep(0.0, 1.0, abs(sd + 0.6));
-        col = mix(col, white, hair * (0.18 + 0.55 * max(-g.y, 0.0)) * (0.6 + 0.4 * dark));
-        bodyA = max(bodyA, hair * 0.85);
+        OVER(white, hair * (0.25 + 0.55 * max(-g.y, 0.0)));
         // The scope's corner brackets, lit in the theme color along the rim.
         vec2 qa = abs(p - C);
         float bracket = step(HS.x - 26.0, qa.x) * step(HS.y - 16.0, qa.y);
         float bline = (1.0 - smoothstep(0.0, 1.1, abs(sd + 1.1))) * bracket;
-        col = mix(col, mix(colRim.rgb, white, 0.25), bline * 0.85);
-        col += colRim.rgb * gaussian(sd + 1.0, 3.0) * bracket * (0.12 + 0.25 * activity);
-        bodyA = max(bodyA, bline);
+        OVER(colRim.rgb, gaussian(sd + 1.0, 3.0) * bracket * (0.1 + 0.25 * activity));
+        OVER(mix(colRim.rgb, white, 0.25), bline * 0.9);
+        OVER(white, processing * 0.25 * gaussian(p.x + (p.y - C.y) * 0.7 - sweepX, 9.0));
+        #undef OVER
 
-        col += white * processing * 0.22 * gaussian(p.x + (p.y - C.y) * 0.7 - sweepX, 9.0);
+        col = pc / max(pA, 1e-4);
+        bodyA = pA / max(colBg.a, 0.01);
     } else if (F == 2) {
         // ---------------- bezel
         float bez = 7.0;
@@ -438,6 +438,9 @@ void main() {
     float outer = max(sd, 0.0);
     float haloA = gaussian(outer, 6.0) * (0.08 + 0.24 * level + 0.15 * onset) * (1.0 - inside) * (dark > 0.5 ? 1.0 : 0.5);
     vec3 outer3 = colHalo.rgb * haloA;
+    // Glass keeps them faint, under the layer blur's ignore_alpha, so text
+    // next to the panel stays sharp.
+    if (F == 1) { shadowA *= 0.22; haloA *= 0.3; outer3 *= 0.3; }
     float outerA = haloA + shadowA * (1.0 - haloA);
 
     float pa = clamp(bodyA * colBg.a * inside, 0.0, 1.0);

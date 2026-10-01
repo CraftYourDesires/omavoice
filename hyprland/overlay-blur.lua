@@ -9,12 +9,12 @@ hl.config({
   decoration = {
     blur = {
       enabled = true,
-      size = 6,
+      size = 9,
       passes = 3,
-      noise = 0.03,
+      noise = 0.02,
       contrast = 1.0,
-      brightness = 0.95,
-      vibrancy = 0.25,
+      brightness = 1.0,
+      vibrancy = 0.4,
       new_optimizations = true,
     },
   },
@@ -22,9 +22,9 @@ hl.config({
 o.window(".*", { no_blur = true })
 
 -- ignore_alpha: the soft shadow and glow around the panel stay unblurred;
--- the glass body (alpha about 0.4 and up) is blurred.
+-- the whole glass panel (its frost tint is 0.2 and up) is blurred.
 hl.layer_rule({
   match = { namespace = "^omavoice-overlay$" },
   blur = true,
-  ignore_alpha = 0.4,
+  ignore_alpha = 0.15,
 })
