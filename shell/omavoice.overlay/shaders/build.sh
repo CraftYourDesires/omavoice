@@ -10,7 +10,7 @@ qsb=$(command -v qsb || echo /usr/lib/qt6/bin/qsb)
 [[ -x $qsb ]] || { echo "qsb not found (install qt6-shadertools)"; exit 1; }
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-for f in voice trace wave; do
+for f in voice trace wave solid; do
   "$qsb" --glsl "100 es,120,150" --hlsl 50 --msl 12 -o $f.frag.qsb $f.frag
   if command -v glslangValidator >/dev/null; then
     for v in 120 150; do

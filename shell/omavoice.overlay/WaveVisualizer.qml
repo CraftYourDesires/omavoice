@@ -3,12 +3,17 @@ import "OverlayModel.js" as Model
 
 // The "scope" and "clip" overlay styles (shaders/wave.frag): variant 0 is a
 // synth oscilloscope, 2 a DAW clip waveform growing out from the center.
+// The "glass", "bezel" and "depth" styles draw the scope in a lit 3D panel
+// instead (shaders/solid.frag, picked by finish).
 // Same panel and inputs as TraceVisualizer.qml, but drawn from the level
 // history (frame.levels) instead of the pen trace.
 Item {
   id: root
 
-  property real margin: 12
+  // 0 the flat panel (wave.frag); 1 glass, 2 bezel, 3 depth (solid.frag),
+  // which need a wider margin for their shadows.
+  property int finish: 0
+  property real margin: finish > 0 ? 18 : 12
   implicitWidth: 264 + margin * 2
   implicitHeight: 56 + margin * 2
 
@@ -49,6 +54,7 @@ Item {
     property real shift: root.traceShift
     property real seq: root.traceSeq
     property real variant: root.variant
+    property real finish: root.finish
     property vector4d h0: root.q(0)
     property vector4d h1: root.q(4)
     property vector4d h2: root.q(8)
@@ -74,6 +80,6 @@ Item {
     property color colLine: root.theme.line
     property color colHalo: root.theme.halo
 
-    fragmentShader: Qt.resolvedUrl("shaders/wave.frag.qsb")
+    fragmentShader: Qt.resolvedUrl(root.finish > 0 ? "shaders/solid.frag.qsb" : "shaders/wave.frag.qsb")
   }
 }

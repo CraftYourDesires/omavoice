@@ -241,7 +241,7 @@ function effectsOf(phase) {
 
 // ---------------------------------------------------------------- settings
 
-var STYLES = ["neon", "trace", "scope", "clip"]
+var STYLES = ["neon", "trace", "scope", "clip", "glass", "bezel", "depth"]
 
 // The overlay's keys from ~/.config/voxtype/omavoice.toml. Commented lines
 // and keys inside [tables] are ignored; anything unknown falls back.

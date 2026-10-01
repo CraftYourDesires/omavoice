@@ -16,7 +16,10 @@ Flickable {
     { value: "neon", name: "Neon", blurb: "A glowing waveform pill. Swells with loudness, moves faster when you talk faster, throws thin sparks on stressed syllables." },
     { value: "trace", name: "Trace", blurb: "A lie detector pen on scrolling paper. Calm baseline in silence, jagged peaks as your voice rises, with grainy ASCII glow in a cyberpunk panel." },
     { value: "scope", name: "Scope", blurb: "A synth oscilloscope in the same ASCII panel. Stays in place and reacts instantly: a soft wave when you are quiet, taller with sharper harmonics as you get louder, with a phosphor ghost of the moment before." },
-    { value: "clip", name: "Clip", blurb: "A DAW clip waveform that grows out from the center, so your newest sound is always in the middle and nothing waits for paper to scroll. Goes flat the moment you stop." }
+    { value: "clip", name: "Clip", blurb: "A DAW clip waveform that grows out from the center, so your newest sound is always in the middle and nothing waits for paper to scroll. Goes flat the moment you stop." },
+    { value: "glass", name: "Glass", blurb: "The Scope wave in a slab of frosted glass with the same chamfered corners: a lit bevel and gloss, the ASCII glow etched inside, live film grain, and the waveform floating in front with a soft shadow. Add hyprland/overlay-blur.lua to your Hyprland config for real frost behind it." },
+    { value: "bezel", name: "Bezel", blurb: "A piece of hardware: a brushed metal bezel with screws and a record light around a recessed, slightly curved CRT screen with a phosphor trace and glare." },
+    { value: "depth", name: "Depth", blurb: "The last few seconds of your voice as solid ribbons receding in perspective inside a glossy slab, newest in front." }
   ]
 
   ColumnLayout {

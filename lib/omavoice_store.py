@@ -30,7 +30,7 @@ STATS_PATH = os.path.join(DATA_DIR, "stats.json")
 LOCK_PATH = os.path.join(DATA_DIR, ".lock")
 SETTINGS_PATH = os.path.join(CONFIG_DIR, "omavoice.toml")
 
-STYLES = ("neon", "trace", "scope", "clip")
+STYLES = ("neon", "trace", "scope", "clip", "glass", "bezel", "depth")
 RETENTION_CHOICES = (0, 1, 7, 30, 90, 365)  # days, 0 = forever
 DEFAULTS = {
     "overlay": True,

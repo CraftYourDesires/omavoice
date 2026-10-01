@@ -50,7 +50,7 @@ Item {
     height: 80
     scale: root.zoom
     sourceComponent: root.style === "trace" ? traceComp
-      : (root.style === "scope" || root.style === "clip" ? waveComp : neonComp)
+      : (["scope", "clip", "glass", "bezel", "depth"].indexOf(root.style) >= 0 ? waveComp : neonComp)
   }
 
   Component {
@@ -89,6 +89,7 @@ Item {
     WaveVisualizer {
       theme: root.frame.palette || root.theme.overlay
       variant: root.style === "clip" ? 2 : 0
+      finish: ({ glass: 1, bezel: 2, depth: 3 })[root.style] || 0
       time: root.frame.time
       level: root.frame.level
       activity: root.frame.activity

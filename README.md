@@ -82,7 +82,9 @@ While you talk, a small pill at the top of the focused monitor shows a glowing w
 
 The overlay has a second style, **Trace**: a lie detector pen on scrolling paper inside a chamfered cyberpunk panel. It draws a calm baseline while you are quiet, swings into jagged, wilder peaks as your voice gets louder, and lights the glow around the line as grainy ASCII glyphs over a graticule that scrolls with the paper. It uses the same theme colors and live theme following as the neon pill. Pick it in the omavoice app, or set `overlay_style = "trace"`.
 
-Two more styles share the Trace panel and its ASCII glow but react instantly, since nothing waits for paper to scroll. **Scope** is a synth oscilloscope: a wave that stays in place, soft when you are quiet, taller with sharper harmonics as you get louder, with a phosphor ghost of the moment before. **Clip** is a DAW clip waveform that grows out from the center, so your newest sound is always in the middle. Set `overlay_style = "scope"` or `"clip"`. All styles scale to your own recent loudness, so a normal voice sits mid-height and only speaking up reaches the top.
+Two more styles share the Trace panel and its ASCII glow but react instantly, since nothing waits for paper to scroll. **Scope** is a synth oscilloscope: a wave that stays in place, soft when you are quiet, taller with sharper harmonics as you get louder, with a phosphor ghost of the moment before. **Clip** is a DAW clip waveform that grows out from the center, so your newest sound is always in the middle. Set `overlay_style = "scope"` or `"clip"`.
+
+Three more draw the Scope wave in a lit, dimensional panel instead of a flat one. **Glass** keeps the chamfered panel, ASCII glow and film grain but makes the panel frosted glass: a beveled rim that catches the light, a top gloss, lit corner brackets, and the waveform floating in front of the glyphs with a soft shadow behind it. For real frost, add the lines in `hyprland/overlay-blur.lua` to `~/.config/hypr/looknfeel.lua`: Omarchy ships with blur off, so they turn blur on, opt every window back out (windows look exactly as before), and blur only the overlay's layer. **Bezel** is a brushed metal instrument with screws and a record light around a recessed, curved CRT screen. **Depth** stacks the last few seconds of your voice as solid ribbons receding in perspective. Set `overlay_style = "glass"`, `"bezel"` or `"depth"`. All styles scale to your own recent loudness, so a normal voice sits mid-height and only speaking up reaches the top.
 
 The text is pasted into the focused app and your clipboard is put back right after, with every format it had (text, rich text, images), so dictating never replaces what you copied. Every finished dictation is also kept in a private history. If it went to the wrong window, or no text box had focus, open the omavoice app and click it to copy it.
 
@@ -107,7 +109,7 @@ Everything lives in `~/.config/voxtype/`:
 |---|---|
 | `dictionary.txt` | Names, products and jargon, one per line. Add `term \| hint`, for example `Aoife \| coworker, misheard as "eefa"`; a "misheard as" hint also becomes a worked example for the model |
 | `app-styles.toml` | Per-app cleanup styles, matched on the window class or title |
-| `omavoice.toml` | Your first name, whether cleanup is on, the overlay (`overlay`, `overlay_position`, `overlay_style`: neon, trace, scope or clip) and history (`history`, `history_days`). The app edits it in place |
+| `omavoice.toml` | Your first name, whether cleanup is on, the overlay (`overlay`, `overlay_position`, `overlay_style`: neon, trace, scope, clip, glass, bezel or depth) and history (`history`, `history_days`). The app edits it in place |
 | `config.toml` | Voxtype itself: model, chunk size, paste keys, instant word replacements |
 | `omavoice.env` | Only on machines where transcription runs on the CPU |
 
