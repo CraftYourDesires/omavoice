@@ -82,11 +82,13 @@ def run(work):
         cg.load(cg.pack(original))
 
         start = time.time()
-        sh("voxtype", "record", "start")
+        # The real wrapper, so the cleanup model warm-up and live cleanup run
+        # exactly as they do for the hotkeys.
+        sh(os.path.join(REPO, "bin", "dictation-record"), "start")
         time.sleep(0.4)
         sh("pw-play", "--target", "omavoice_test_mic", os.path.join(REPO, "tests", "fixtures", "check.wav"), timeout=30)
         time.sleep(0.4)
-        sh("voxtype", "record", "stop")
+        sh(os.path.join(REPO, "bin", "dictation-record"), "stop")
         stopped = time.time()
         got = wait_for(lambda: os.path.exists(sink_file) and os.path.getsize(sink_file) > 20 and open(sink_file).read(), 60)
         time.sleep(1.5)

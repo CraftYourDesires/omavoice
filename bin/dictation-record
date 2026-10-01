@@ -14,8 +14,10 @@ settings="$HOME/.config/voxtype/omavoice.toml"
 cleanup_off() { grep -Eq '^[[:space:]]*cleanup[[:space:]]*=[[:space:]]*false' "$settings" 2>/dev/null; }
 if [[ ! -e $busy ]] && ! cleanup_off && [[ $action == start || ( $action == toggle && $(voxtype status 2>/dev/null) == idle ) ]]; then
   # An empty generate request only loads the model (and resets its idle clock).
+  # num_ctx must match dictation-cleanup's request: Ollama reloads the model
+  # when the context size differs, which cost about 3s on every dictation.
   setsid -f curl -s -m 30 http://127.0.0.1:11434/api/generate \
-    -d "{\"model\":\"$model\",\"keep_alive\":\"10m\"}" >/dev/null 2>&1
+    -d "{\"model\":\"$model\",\"keep_alive\":\"10m\",\"options\":{\"num_ctx\":8192}}" >/dev/null 2>&1
   # Clean finished sentences while you talk, so long dictations don't wait
   # for the whole rewrite at the end (see dictation-live).
   setsid -f "$HOME/.local/bin/dictation-live" >/dev/null 2>&1 </dev/null
