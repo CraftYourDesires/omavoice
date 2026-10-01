@@ -29,6 +29,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import clipguard as cg  # noqa: E402
 
 REPO = cg.REPO
+sys.path.insert(0, os.path.join(REPO, "lib"))
+import omavoice_mic  # noqa: E402
 failed = 0
 
 
@@ -112,6 +114,10 @@ def run(work):
         for m in reversed(modules):
             if m.isdigit():
                 sh("pactl", "unload-module", m)
+        # EasyEffects follows the default source change and saves the test
+        # mic as its input; once that is unloaded it would record silence.
+        if omavoice_mic.easyeffects_input_device() not in ("", *omavoice_mic.sources()):
+            omavoice_mic.restart_easyeffects()
         if svc:
             svc.terminate()
             svc.wait(5)
@@ -122,6 +128,8 @@ def run(work):
         if focused:
             sh("hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{focused}" }})')
     check("your default microphone is restored", sh("pactl", "get-default-source").stdout.strip() == default_source, default_source)
+    mic_ok, mic_detail = omavoice_mic.chain_ok()
+    check("and it still reaches Voxtype (EasyEffects input intact)", mic_ok, mic_detail)
     check("the installed omavoice-output service is running again", sh("systemctl", "--user", "is-active", "omavoice-output.service").stdout.strip() == "active")
 
 

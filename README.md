@@ -150,6 +150,7 @@ omavoice depends on details of Voxtype 1.0.1 (its chunk log lines and how it sti
 | `omavoice-doctor` | Checks the chunk log format, transcription of a known clip, GPU acceleration, the running service, the LLM cleanup, live cleanup, the paste path (file mode, omavoice-output, omavoice-clipboard) and the update hold |
 | `omavoice-upgrade` | Tests, installs and verifies a new Voxtype, with automatic rollback |
 | `omavoice-trace start [N]` | Traces your next N dictations: what the speech model heard, what replacements and cleanup changed (`omavoice-trace show`), and how long each step took after you released the key (`omavoice-trace summary`). `omavoice-trace clear` deletes it all |
+| `omavoice-doctor --fix-mic` | When dictation only produces symbols, the microphone is silent; this points EasyEffects back at a real microphone and restarts it |
 | `omavoice-hold [--release]` | Adds or removes the `IgnorePkg` hold |
 
 Even when something does break, dictation keeps working: a CUDA failure falls back to the CPU, a cleanup failure pastes the raw transcript, and a live cleanup mismatch falls back to a full cleanup.

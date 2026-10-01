@@ -452,9 +452,23 @@ def live_merge(raw, style, context):
                 pass
 
 
+def heard_silence(raw):
+    """Cohere turns a silent microphone into replacement characters (U+FFFD)."""
+    letters = [c for c in raw if not c.isspace()]
+    return bool(letters) and sum(c == "\ufffd" for c in letters) / len(letters) > 0.3
+
+
 def main():
     raw = sys.stdin.read().strip()
     if not raw:
+        return
+    if heard_silence(raw):
+        # Paste nothing instead of a line of symbols, and say why.
+        if not os.environ.get("OMAVOICE_NO_NOTIFY"):
+                subprocess.run(["notify-send", "-a", "omavoice", "-i", "microphone-sensitivity-muted",
+                            "Dictation heard only silence",
+                            "Check your microphone. If it goes through EasyEffects, run: omavoice-doctor --fix-mic"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
         return
     # One or two words gain nothing from the LLM round trip, and while
     # dictation-vram-guard has the GPU marked busy the model stays unloaded.
