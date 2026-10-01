@@ -12,15 +12,17 @@ var DEFAULTS = {
   maxFloorDb: -28,
   floorRiseDbPerSec: 2.5, // the floor creeps up so a steady hum stops counting
   gateDb: 5,           // speech must clear the floor by this much
-  spanDb: 42,          // dB above the gate that maps to full level before the ceiling has adapted
-  // Loudness ceiling: follows your recent loud syllables (fast up, slow down)
-  // so your normal voice lands mid-scale on any mic, and only speaking louder
-  // than that reaches the top.
-  ceilingAttackMs: 80,
-  ceilingDecayDbPerSec: 2.5,
-  ceilingMinSpanDb: 22,
-  headroomDb: 9,
-  curve: 1.5,          // >1 spreads quiet and normal speech further apart
+  // Your normal voice: a slow average of speech peaks, kept across
+  // recordings. It maps to half height; loudDb above it reaches the top and
+  // quieter speech shrinks toward the gate, so loud, normal and quiet speech
+  // look different instead of all reaching the same height.
+  voiceDb: -30,        // starting guess for a normal voice, before any speech
+  voiceFastMs: 1500,   // first few seconds of speech: learn quickly
+  voiceMs: 25000,      // after that, follow slowly so speaking up stays big
+  voiceLearnMs: 4000,
+  voiceMinSpanDb: 18,  // normal voice sits at least this far above the gate
+  loudDb: 10,
+  curve: 1.3,          // below normal: >1 keeps quiet speech small
   attackMs: 20,
   releaseMs: 110,
   slowMs: 420,
@@ -53,7 +55,8 @@ function createAnalyzer(options) {
     pendingPeak: 0,
     hasPeak: false,
     floorDb: o.floorDb,
-    ceilDb: o.floorDb + o.gateDb + o.spanDb - o.headroomDb,
+    voiceDb: o.voiceDb,
+    voiceHeardMs: 0,
     target: 0,
     env: 0,
     slow: 0,
@@ -116,11 +119,14 @@ function tick(st, dtMs) {
   st.floorDb = clamp(st.floorDb, o.minFloorDb, o.maxFloorDb)
 
   var gate = st.floorDb + o.gateDb
-  if (db > st.ceilDb) st.ceilDb = smooth(st.ceilDb, db, dt, o.ceilingAttackMs)
-  else st.ceilDb -= o.ceilingDecayDbPerSec * dt / 1000
-  st.ceilDb = Math.max(st.ceilDb, gate + o.ceilingMinSpanDb)
-  var raw = clamp((db - gate) / (st.ceilDb + o.headroomDb - gate), 0, 1)
-  st.target = Math.pow(raw, o.curve)
+  // Learn the normal level only from clear speech, not room noise.
+  if (db > gate + 8) {
+    st.voiceDb = smooth(st.voiceDb, db, dt, st.voiceHeardMs < o.voiceLearnMs ? o.voiceFastMs : o.voiceMs)
+    st.voiceHeardMs += dt
+  }
+  st.voiceDb = Math.max(st.voiceDb, gate + o.voiceMinSpanDb)
+  if (db <= st.voiceDb) st.target = 0.5 * Math.pow(clamp((db - gate) / (st.voiceDb - gate), 0, 1), o.curve)
+  else st.target = 0.5 + 0.5 * clamp((db - st.voiceDb) / o.loudDb, 0, 1)
 
   st.env = smooth(st.env, st.target, dt, st.target > st.env ? o.attackMs : o.releaseMs)
   st.slow = smooth(st.slow, st.env, dt, o.slowMs)
@@ -174,7 +180,7 @@ function frameOf(st) {
     intensity: st.intensity,
     cadenceHz: st.cadenceHz,
     floorDb: st.floorDb,
-    ceilDb: st.ceilDb,
+    voiceDb: st.voiceDb,
     flow: st.flow,
     amps: st.amps.slice(0)
   }
@@ -360,7 +366,12 @@ function advancePhase(drv, dt) {
   var np = nextPhase(drv.phase, drv.stale ? "idle" : drv.voxState, drv.msInPhase)
   if (np === drv.phase) return false
   if (drv.phase === "hidden" && np !== "hidden") {
+    var learned = drv.analyzer
     drv.analyzer = createAnalyzer(drv.options)
+    if (learned.voiceHeardMs >= learned.opts.voiceLearnMs) {
+      drv.analyzer.voiceDb = learned.voiceDb
+      drv.analyzer.voiceHeardMs = learned.voiceHeardMs
+    }
     drv.trace = createTrace()
     drv.appear = 0
     drv.processing = 0

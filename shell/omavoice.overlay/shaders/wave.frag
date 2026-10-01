@@ -102,7 +102,7 @@ float scopeY(float x, float lv, float t) {
     float w = sin(6.2831853 * 2.5 * u - t * 7.0)
             + (0.25 + 0.9 * onset) * 0.55 * sin(6.2831853 * 6.0 * u + t * 11.0)
             + lv * 0.4 * sin(6.2831853 * 11.0 * u - t * 17.0);
-    return yMid - pow(lv, 0.8) * amp * 0.95 * win * w / 1.25;
+    return yMid - lv * amp * 0.95 * win * w / 2.0;
 }
 float curveDist(vec2 p, float lv, float t) {
     float y = scopeY(p.x, lv, t);
@@ -141,7 +141,7 @@ float clipE(float x) {
     float f = d * 40.0;
     float age = floor(f + seq + shift);
     float tex = 0.3 + 0.7 * hash11(age * 3.0 + sign(cx) * 0.5 + 17.0);
-    return pow(Lf(f), 0.8) * tex * 1.1 * (1.0 - smoothstep(0.8, 1.0, d));
+    return Lf(f) * tex * 0.95 * (1.0 - smoothstep(0.8, 1.0, d));
 }
 
 // Distance to the bright edge of the shape and whether q is inside its body.
